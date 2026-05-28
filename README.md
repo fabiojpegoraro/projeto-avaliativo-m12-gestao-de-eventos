@@ -25,3 +25,60 @@ O **Sistema de Gestão de Eventos** é uma aplicação web completa desenvolvida
 O projeto é um monorepo contendo duas partes principais na raiz:
 - `/frontend`: Aplicação Web SPA para a interface do usuário.
 - `/backend`: API REST para fornecer os dados e regras de negócio.
+
+## 📌 Arquitetura do Sistema
+
+O projeto adota uma arquitetura dividida em duas camadas principais (Frontend SPA e Backend API RESTful), utilizando comunicação assíncrona via protocolo HTTP e persistência em banco de dados NoSQL.
+
+## 📌 Arquitetura do Sistema
+
+O projeto adota uma arquitetura dividida em duas camadas principais (Frontend SPA e Backend API RESTful), utilizando comunicação assíncrona via protocolo HTTP e persistência em banco de dados NoSQL. O sistema possui acesso aberto, sem controle de autenticação.
+
+```mermaid
+graph TD
+    %% Usuário da Aplicação
+    User[👤 Usuário Público <br> Acesso Aberto]
+
+    %% Camada de Frontend
+    subgraph Frontend [Camada de Cliente - Frontend SPA]
+        UI[Componentes UI <br> Material UI / CSS]
+        RoutesFE[Rotas da Aplicação <br> React Router]
+        State[Gerenciamento de Estado <br> Redux Toolkit]
+        Valid[Validação de Formulários <br> Zod + React Hook Form]
+        Axios[Cliente HTTP <br> Axios]
+
+        UI --> RoutesFE
+        UI --> Valid
+        Valid --> State
+        State --> Axios
+    end
+
+    %% Camada de Backend
+    subgraph Backend [Camada de Servidor - Backend API]
+        RoutesBE[Rotas & Endpoints <br> Express Routes]
+        Middlewares[Middlewares <br> Error Handler]
+        Controllers[Controladores <br> Express Controllers]
+        Services[Camada de Serviços <br> Regras de Negócio]
+        Models[Modelos de Dados <br> Mongoose Models]
+
+        RoutesBE --> Middlewares
+        Middlewares --> Controllers
+        Controllers --> Services
+        Services --> Models
+    end
+
+    %% Camada de Persistência
+    subgraph Database [Camada de Dados]
+        MongoDB[(MongoDB <br> Collection: events)]
+    end
+
+    %% Relacionamentos e Fluxo de Dados
+    User --> UI
+    
+    Axios -- "Requisições REST (JSON)" --> RoutesBE
+    Models -- "Mongoose ODM" --> MongoDB
+
+    %% Estilização do Diagrama
+    style Frontend fill:#f9f9f9,stroke:#61dafb,stroke-width:2px
+    style Backend fill:#f9f9f9,stroke:#339933,stroke-width:2px
+    style Database fill:#f5f5f5,stroke:#47a248,stroke-width:2px
