@@ -1,7 +1,7 @@
 # Sistema de Gestão de Eventos
 
 ## Descrição do Projeto
-O **Sistema de Gestão de Eventos** é uma aplicação web completa desenvolvida para gerenciar e visualizar eventos acadêmicos. O sistema atende a dois perfis distintos: Administradores, que possuem controle total para gerenciar (cadastrar, editar, excluir e visualizar) os eventos, e Leitores, que possuem acesso apenas para visualização. A plataforma conta com uma interface intuitiva, listando os eventos separados por "Futuros" e "Passados", e oferece recursos de busca textual e ordenação, facilitando a usabilidade.
+O **Sistema de Gestão de Eventos** é uma aplicação web completa desenvolvida para gerenciar e visualizar eventos acadêmicos. O sistema possui acesso aberto (sem controle de usuários ou login), permitindo cadastrar, editar, excluir e visualizar os eventos livremente. A plataforma conta com uma interface intuitiva, listando os eventos separados por "Futuros" e "Passados", e oferece recursos de busca textual e ordenação, facilitando a usabilidade.
 
 ## Stack Tecnológica
 
@@ -19,7 +19,7 @@ O **Sistema de Gestão de Eventos** é uma aplicação web completa desenvolvida
 - **Node.js**: Ambiente de execução JavaScript no servidor.
 - **Express**: Framework web minimalista para construção da API RESTful.
 - **TypeScript**: Tipagem estática para maior previsibilidade no backend.
-- **MongoDB**: Banco de dados NoSQL, responsável pela persistência das informações de usuários e eventos.
+- **MongoDB**: Banco de dados NoSQL, responsável pela persistência das informações de eventos.
 
 ## Estrutura do Projeto
 O projeto é um monorepo contendo duas partes principais na raiz:
