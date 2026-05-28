@@ -1,6 +1,6 @@
 # Documentação Técnica
 
-Este documento fornece as diretrizes arquiteturais, a organização dos diretórios e a modelagem do banco de dados (MongoDB) que sustentarão o desenvolvimento do Sistema de Gestão de Eventos.
+Este documento fornece as diretrizes arquiteturais, a organização dos diretórios e a modelagem do banco de dados (MongoDB) que sustentarão o desenvolvimento do Sistema de Gestão de Eventos. O sistema não possui autenticação nem controle de usuários.
 
 ## 1. Arquitetura do Sistema
 
@@ -9,8 +9,8 @@ O projeto adota uma arquitetura em duas camadas principais, separando responsabi
 ### Frontend
 - **Padrão:** Single Page Application (SPA).
 - **Core:** React com TypeScript.
-- **Gerenciamento de Estado:** Redux Toolkit para gerenciar estados globais (ex.: estado de autenticação, perfil logado, eventos em cache).
-- **Roteamento:** React Router (sugerido) para navegação entre Login, Home (Eventos) e Tela de Formulário.
+- **Gerenciamento de Estado:** Redux Toolkit para gerenciar estados globais (ex.: eventos em cache).
+- **Roteamento:** React Router (sugerido) para navegação entre Home (Lista de Eventos) e Tela de Formulário.
 - **Comunicação:** Axios ou funções nativas `fetch` encapsuladas por Redux Thunks/RTK Query para integração com a API.
 - **Estilo:** Material UI para componentes base padronizados e CSS puro importado (arquivos `.css`) para ajustes e refinamentos customizados.
 
@@ -18,7 +18,6 @@ O projeto adota uma arquitetura em duas camadas principais, separando responsabi
 - **Padrão:** API RESTful baseada na arquitetura MVC (Model-View-Controller) simplificada (Controladores e Modelos + Camada de Serviços).
 - **Core:** Node.js com o framework web Express e suporte a TypeScript.
 - **Persistência de Dados:** MongoDB interagindo através da biblioteca de ODM Mongoose.
-- **Segurança:** Utilização de JWT (JSON Web Tokens) para manter a sessão do usuário (autenticação).
 
 ---
 
@@ -35,8 +34,8 @@ A seguir, a estrutura recomendada partindo da raiz do projeto (`/`), separando a
 │   ├── src/
 │   │   ├── config/          # Configurações gerais (db, env vars)
 │   │   ├── controllers/     # Controladores das rotas e requisições HTTP
-│   │   ├── middlewares/     # Funções intermediárias (auth, error handler)
-│   │   ├── models/          # Modelos de dados Mongoose (User, Event)
+│   │   ├── middlewares/     # Funções intermediárias (error handler)
+│   │   ├── models/          # Modelos de dados Mongoose (Event)
 │   │   ├── routes/          # Definição e agrupamento dos endpoints REST
 │   │   ├── services/        # Regras de negócio e comunicação direta com models
 │   │   ├── utils/           # Funções e lógicas auxiliares utilitárias
@@ -49,8 +48,8 @@ A seguir, a estrutura recomendada partindo da raiz do projeto (`/`), separando a
     ├── src/
     │   ├── assets/          # Mídias locais estáticas (ícones, logos, imagens)
     │   ├── components/      # Componentes visuais reusáveis (Header, EventCard, ConfirmDialog)
-    │   ├── features/        # Regras de estado do Redux Toolkit (authSlice, eventsSlice)
-    │   ├── pages/           # Views principais amarradas a rotas (Login, Home, EventForm)
+    │   ├── features/        # Regras de estado do Redux Toolkit (eventsSlice)
+    │   ├── pages/           # Views principais amarradas a rotas (Home, EventForm)
     │   ├── routes/          # Configuração de rotas de navegação da aplicação
     │   ├── services/        # Configuração do Axios/API e requisições HTTP
     │   ├── styles/          # Arquivos `.css` para personalização
@@ -66,23 +65,10 @@ A seguir, a estrutura recomendada partindo da raiz do projeto (`/`), separando a
 
 ## 3. Modelagem de Dados Prevista (MongoDB / Mongoose)
 
-O banco de dados possuirá duas coleções (Collections) principais: **Users** e **Events**.
-
-### Collection: `users`
-Guarda as credenciais de acesso de administradores e leitores.
-
-| Campo | Tipo | Descrição | Restrições |
-| :--- | :--- | :--- | :--- |
-| `_id` | ObjectId | Identificador único. | Gerado pelo MongoDB. |
-| `email` | String | E-mail de acesso. | `required: true`, `unique: true` |
-| `password` | String | Senha hash para acesso. | `required: true` |
-| `role` | String | Nível de acesso (Admin ou Leitor). | `enum: ['ADMIN', 'READER']`, `required: true` |
-
-> [!NOTE]
-> Recomenda-se criar um "Seed" inicial para gerar previamente os usuários propostos nas regras de negócio (admin e leitor), uma vez que não foi solicitada uma tela de cadastro de usuários.
+O banco de dados possuirá apenas uma coleção (Collection) principal: **Events**.
 
 ### Collection: `events`
-Guarda todas as propriedades referentes a um evento criado pelo administrador.
+Guarda todas as propriedades referentes aos eventos criados no sistema.
 
 | Campo | Tipo | Descrição | Restrições |
 | :--- | :--- | :--- | :--- |
