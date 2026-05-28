@@ -30,13 +30,14 @@ O projeto é um monorepo contendo duas partes principais na raiz:
 
 O projeto adota uma arquitetura dividida em duas camadas principais (Frontend SPA e Backend API RESTful), utilizando comunicação assíncrona via protocolo HTTP e persistência em banco de dados NoSQL.
 
+## 📌 Arquitetura do Sistema
+
+O projeto adota uma arquitetura dividida em duas camadas principais (Frontend SPA e Backend API RESTful), utilizando comunicação assíncrona via protocolo HTTP e persistência em banco de dados NoSQL. O sistema possui acesso aberto, sem controle de autenticação.
+
 ```mermaid
 graph TD
-    %% Definição de Perfis de Usuário
-    subgraph Users [Acesso e Perfis]
-        Admin[👤 Administrador <br> Full Access]
-        Reader[👤 Leitor <br> Read-Only]
-    end
+    %% Usuário da Aplicação
+    User[👤 Usuário Público <br> Acesso Aberto]
 
     %% Camada de Frontend
     subgraph Frontend [Camada de Cliente - Frontend SPA]
@@ -55,7 +56,7 @@ graph TD
     %% Camada de Backend
     subgraph Backend [Camada de Servidor - Backend API]
         RoutesBE[Rotas & Endpoints <br> Express Routes]
-        Middlewares[Middlewares <br> Auth JWT / Error Handler]
+        Middlewares[Middlewares <br> Error Handler]
         Controllers[Controladores <br> Express Controllers]
         Services[Camada de Serviços <br> Regras de Negócio]
         Models[Modelos de Dados <br> Mongoose Models]
@@ -68,18 +69,16 @@ graph TD
 
     %% Camada de Persistência
     subgraph Database [Camada de Dados]
-        MongoDB[(MongoDB <br> Collections: users / events)]
+        MongoDB[(MongoDB <br> Collection: events)]
     end
 
     %% Relacionamentos e Fluxo de Dados
-    Admin --> UI
-    Reader --> UI
+    User --> UI
     
-    Axios -- "Requisições REST (JSON + JWT)" --> RoutesBE
+    Axios -- "Requisições REST (JSON)" --> RoutesBE
     Models -- "Mongoose ODM" --> MongoDB
 
     %% Estilização do Diagrama
     style Frontend fill:#f9f9f9,stroke:#61dafb,stroke-width:2px
     style Backend fill:#f9f9f9,stroke:#339933,stroke-width:2px
     style Database fill:#f5f5f5,stroke:#47a248,stroke-width:2px
-    style Users fill:#f5f5f5,stroke:#333,stroke-dasharray: 5 5
