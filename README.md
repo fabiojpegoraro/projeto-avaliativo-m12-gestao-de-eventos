@@ -30,6 +30,76 @@ O projeto é um monorepo contendo duas partes principais na raiz:
 - `/frontend`: Aplicação Web SPA para a interface do usuário.
 - `/backend`: API REST para fornecer os dados e regras de negócio.
 
+## 🚀 Como Executar o Projeto
+
+### Pré-requisitos
+
+Certifique-se de ter instalado em sua máquina:
+
+- **[Node.js](https://nodejs.org)** v18 ou superior
+- **[MongoDB](https://www.mongodb.com/try/download/community)** rodando localmente na porta padrão `27017`  
+  *(ou uma URI remota, como o [MongoDB Atlas](https://www.mongodb.com/atlas))*
+
+---
+
+### 1. Backend
+
+```bash
+# 1. Acesse a pasta do backend
+cd backend
+
+# 2. Instale as dependências
+npm install
+
+# 3. Copie e configure o arquivo de variáveis de ambiente
+cp .env.example .env
+# Abra o .env e ajuste os valores:
+#   PORT=3001
+#   MONGODB_URI=mongodb://localhost:27017/gestao-eventos
+
+# 4. Inicie o servidor em modo desenvolvimento
+npm run dev
+```
+
+✅ O servidor estará disponível em **`http://localhost:3001`**  
+Os endpoints da API ficam em `http://localhost:3001/api/events`
+
+---
+
+### 2. Frontend
+
+> **Atenção:** o backend deve estar rodando antes de iniciar o frontend.
+
+```bash
+# Em um novo terminal, acesse a pasta do frontend
+cd frontend
+
+# Instale as dependências
+npm install
+
+# Inicie o servidor de desenvolvimento
+npm run dev
+```
+
+✅ A aplicação estará disponível em **`http://localhost:5173`**
+
+---
+
+### Scripts disponíveis
+
+| Pasta | Comando | Descrição |
+|-------|---------|-----------|
+| `backend` | `npm run dev` | Servidor com hot-reload (ts-node-dev) |
+| `backend` | `npm run build` | Compila TypeScript para `dist/` |
+| `backend` | `npm test` | Executa os testes unitários (Jest) |
+| `backend` | `npm run lint` | Verifica o código com ESLint |
+| `frontend` | `npm run dev` | Dev server Vite |
+| `frontend` | `npm run build` | Build de produção |
+| `frontend` | `npm test` | Executa os testes unitários (Vitest) |
+| `frontend` | `npm run lint` | Verifica o código com ESLint |
+
+
+
 ## 📌 Arquitetura do Sistema
 
 O projeto adota uma arquitetura dividida em duas camadas principais (Frontend SPA e Backend API RESTful), utilizando comunicação assíncrona via protocolo HTTP e persistência em banco de dados NoSQL.
