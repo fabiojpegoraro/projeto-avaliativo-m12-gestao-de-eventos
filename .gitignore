@@ -1,0 +1,66 @@
+# ==========================
+# Dependências
+# ==========================
+node_modules/
+
+# ==========================
+# Builds compilados
+# ==========================
+dist/
+build/
+
+# ==========================
+# Variáveis de ambiente
+# ==========================
+.env
+.env.local
+.env.development
+.env.staging
+.env.production
+
+# ==========================
+# Logs
+# ==========================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==========================
+# Cache e temporários
+# ==========================
+.cache/
+.parcel-cache/
+.vite/
+.turbo/
+*.tsbuildinfo
+
+# ==========================
+# Cobertura de testes
+# ==========================
+coverage/
+.nyc_output/
+
+# ==========================
+# Editores e IDEs
+# ==========================
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ==========================
+# Sistema Operacional
+# ==========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
