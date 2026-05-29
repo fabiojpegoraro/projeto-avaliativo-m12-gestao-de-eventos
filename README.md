@@ -37,8 +37,14 @@ O projeto é um monorepo contendo duas partes principais na raiz:
 Certifique-se de ter instalado em sua máquina:
 
 - **[Node.js](https://nodejs.org)** v18 ou superior
-- **[MongoDB](https://www.mongodb.com/try/download/community)** rodando localmente na porta padrão `27017`  
-  *(ou uma URI remota, como o [MongoDB Atlas](https://www.mongodb.com/atlas))*
+- **MongoDB** rodando localmente na porta `27017`
+
+> **Dica (MongoDB via Docker):**  
+> A maneira mais fácil de rodar o banco localmente é ter o Docker instalado e executar:
+> ```bash
+> docker run -d -p 27017:27017 --name mongo-gestao mongo
+> ```
+> *(Alternativamente, você pode usar uma URI remota como o [MongoDB Atlas](https://www.mongodb.com/atlas))*
 
 ---
 
