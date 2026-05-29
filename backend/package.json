@@ -1,0 +1,16 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "API RESTful para o Sistema de Gestão de Eventos",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/server.js",
+    "lint": "eslint 'src/**/*.ts' '__tests__/**/*.ts'",
+    "test": "jest --config jest.config.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
