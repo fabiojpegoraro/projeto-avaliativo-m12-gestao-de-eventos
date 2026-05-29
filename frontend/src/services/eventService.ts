@@ -1,9 +1,17 @@
+import axios from 'axios';
 import api from './api';
 import type { IEvent, IEventFormData } from '../types/event.types';
 
 export const fetchAllEvents = async (): Promise<IEvent[]> => {
-  const { data } = await api.get<IEvent[]>('/events');
-  return data;
+  try {
+    const { data } = await api.get<IEvent[]>('/events');
+    return data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      return [];
+    }
+    throw error;
+  }
 };
 
 export const fetchEventById = async (id: string): Promise<IEvent> => {
