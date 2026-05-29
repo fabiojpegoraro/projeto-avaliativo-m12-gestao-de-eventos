@@ -21,6 +21,10 @@ O **Sistema de Gestão de Eventos** é uma aplicação web completa desenvolvida
 - **TypeScript**: Tipagem estática para maior previsibilidade no backend.
 - **MongoDB**: Banco de dados NoSQL, responsável pela persistência das informações de eventos.
 
+### Ferramentas de IA
+- **Google Antigravity**: Ferramenta de IA para auxiliar na escrita de código.
+- **Gemini 3.0**: Ferramenta de IA para auxiliar na escrita de código e documentação.
+
 ## Estrutura do Projeto
 O projeto é um monorepo contendo duas partes principais na raiz:
 - `/frontend`: Aplicação Web SPA para a interface do usuário.
