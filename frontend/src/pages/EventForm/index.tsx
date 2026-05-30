@@ -40,10 +40,17 @@ const EventForm = () => {
   useEffect(() => {
     if (id) {
       fetchEventById(id).then((event) => {
+        const eventDate = new Date(event.dateTime);
+        const localDateTime = new Date(
+          eventDate.getTime() - eventDate.getTimezoneOffset() * 60000,
+        )
+          .toISOString()
+          .slice(0, 16);
+
         reset({
           name: event.name,
           description: event.description,
-          dateTime: event.dateTime.slice(0, 16),
+          dateTime: localDateTime,
           location: event.location,
           category: event.category,
         });
