@@ -52,7 +52,7 @@ jobs:
 
       # 3. Instalação limpa e determinística das dependências
       - name: Install dependencies (Clean Install)
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       # 4. Checagem de qualidade do código com ESLint
       - name: Run Linter
@@ -95,7 +95,7 @@ jobs:
 
       # 3. Instalação limpa e determinística das dependências
       - name: Install dependencies (Clean Install)
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       # 4. Checagem de qualidade do código com ESLint
       - name: Run Linter
