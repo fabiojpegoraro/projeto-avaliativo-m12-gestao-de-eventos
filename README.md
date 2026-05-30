@@ -105,11 +105,6 @@ npm run dev
 | `frontend` | `npm run lint` | Verifica o código com ESLint |
 
 
-
-## 📌 Arquitetura do Sistema
-
-O projeto adota uma arquitetura dividida em duas camadas principais (Frontend SPA e Backend API RESTful), utilizando comunicação assíncrona via protocolo HTTP e persistência em banco de dados NoSQL.
-
 ## 📌 Arquitetura do Sistema
 
 O projeto adota uma arquitetura dividida em duas camadas principais (Frontend SPA e Backend API RESTful), utilizando comunicação assíncrona via protocolo HTTP e persistência em banco de dados NoSQL. O sistema possui acesso aberto, sem controle de autenticação.
