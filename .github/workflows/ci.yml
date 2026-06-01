@@ -1,0 +1,110 @@
+# ==============================================================================
+# Pipeline de Integração Contínua (CI) - Sistema de Gestão de Eventos
+# ==============================================================================
+#
+# Autor: DevOps Engineer
+# Descrição: Esta pipeline executa em paralelo testes, linter e build para o
+#            frontend e o backend sempre que houver commits ou pull requests
+#            direcionados para as branches principais (main e develop).
+#
+# ==============================================================================
+
+name: Continuous Integration
+
+# Gatilhos de execução (Triggers)
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  # ============================================================================
+  # JOB: CI do Backend
+  # ============================================================================
+  backend-ci:
+    name: Backend CI (Node/Express/TS)
+    runs-on: ubuntu-latest
+
+    # Define o diretório padrão de execução de todas as etapas deste job
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      # 1. Checkout do código-fonte
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          description: "Baixa o código-fonte do repositório para o runner"
+
+      # 2. Configuração do ambiente Node.js com cache do npm
+      - name: Setup Node.js (LTS v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      # 3. Instalação limpa e determinística das dependências
+      - name: Install dependencies (Clean Install)
+        run: npm ci --legacy-peer-deps
+
+      # 4. Checagem de qualidade do código com ESLint
+      - name: Run Linter
+        run: npm run lint
+
+      # 5. Validação da compilação do TypeScript
+      - name: Build and compile TypeScript
+        run: npm run build
+
+      # 6. Execução de testes unitários (não dependentes do MongoDB)
+      - name: Run Unit Tests
+        run: npm run test
+
+  # ============================================================================
+  # JOB: CI do Frontend
+  # ============================================================================
+  frontend-ci:
+    name: Frontend CI (React/Vite/TS)
+    runs-on: ubuntu-latest
+
+    # Define o diretório padrão de execução de todas as etapas deste job
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      # 1. Checkout do código-fonte
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          description: "Baixa o código-fonte do repositório para o runner"
+
+      # 2. Configuração do ambiente Node.js com cache do npm
+      - name: Setup Node.js (LTS v20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      # 3. Instalação limpa e determinística das dependências
+      - name: Install dependencies (Clean Install)
+        run: npm ci --legacy-peer-deps
+
+      # 4. Checagem de qualidade do código com ESLint
+      - name: Run Linter
+        run: npm run lint
+
+      # 5. Validação da compilação do TypeScript e empacotamento com Vite
+      - name: Build frontend production bundle
+        run: npm run build
+
+      # 6. Execução de testes unitários com Vitest
+      - name: Run Unit Tests
+        run: npm run test
