@@ -3,6 +3,9 @@
 ## Descrição do Projeto
 O **Sistema de Gestão de Eventos** é uma aplicação web completa desenvolvida para gerenciar e visualizar eventos acadêmicos. O sistema possui acesso aberto (sem controle de usuários ou login), permitindo cadastrar, editar, excluir e visualizar os eventos livremente. A plataforma conta com uma interface intuitiva, listando os eventos separados por "Futuros" e "Passados", e oferece recursos de busca textual e ordenação, facilitando a usabilidade.
 
+## Apresentação no Youtube
+https://youtu.be/Ry7Zq1XsK3I
+
 ## Stack Tecnológica
 
 ### Frontend
