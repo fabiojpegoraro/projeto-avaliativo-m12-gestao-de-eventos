@@ -2,7 +2,7 @@ import os
 import json
 import requests
 from dotenv import load_dotenv
-from typing import Annotated, TypedDict
+from typing import Annotated, TypedDict, Literal
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
@@ -38,12 +38,35 @@ def consultar_eventos() -> str:
     except requests.exceptions.RequestException as e:
         return f"Erro ao acessar a API de eventos: {str(e)}"
 
+# Definindo a Tool de Cadastro de Eventos
+@tool
+def cadastrar_evento(nome: str, descricao: str, data_hora: str, local: str, categoria: Literal["Conferência", "Workshop", "Webinar", "Networking", "Outro"]) -> str:
+    """
+    Cadastra um novo evento na API.
+    A data_hora deve ser fornecida em formato válido, como '2026-08-15T14:00:00Z' ou '2026-08-15'.
+    Retorna uma mensagem de sucesso com o ID do evento criado ou uma mensagem de erro.
+    """
+    try:
+        payload = {
+            "name": nome,
+            "description": descricao,
+            "dateTime": data_hora,
+            "location": local,
+            "category": categoria
+        }
+        response = requests.post(f"{API_BASE_URL}/events", json=payload)
+        response.raise_for_status()
+        event = response.json()
+        return f"Evento '{nome}' cadastrado com sucesso! ID: {event.get('_id', 'N/A')}"
+    except requests.exceptions.RequestException as e:
+        return f"Erro ao cadastrar o evento na API: {str(e)}"
+
 # Configurando o LLM com o LangChain
 # Importante: Requer a variável GOOGLE_API_KEY no arquivo .env
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
 
-# Vinculando a tool ao modelo
-tools = [consultar_eventos]
+# Vinculando as tools ao modelo
+tools = [consultar_eventos, cadastrar_evento]
 llm_with_tools = llm.bind_tools(tools)
 
 # Função para executar o LLM
@@ -60,10 +83,13 @@ def run_tools(state: AgentState):
     last_message = messages[-1]
     
     tool_responses = []
+    tool_map = {t.name: t for t in tools}
+    
     for tool_call in last_message.tool_calls:
-        if tool_call["name"] == "consultar_eventos":
+        if tool_call["name"] in tool_map:
             # Executa a tool
-            result = consultar_eventos.invoke(tool_call["args"])
+            tool_func = tool_map[tool_call["name"]]
+            result = tool_func.invoke(tool_call["args"])
             tool_responses.append(
                 ToolMessage(
                     content=str(result),
@@ -135,9 +161,15 @@ if __name__ == "__main__":
                     if "messages" in state_update:
                         for msg in state_update["messages"]:
                             if node_name == "agent" and msg.content:
-                                print(f"\nAgente: {msg.content}")
+                                # Trata o retorno em formato de blocos (lista de dicionários)
+                                if isinstance(msg.content, list):
+                                    text_parts = [p.get("text", "") for p in msg.content if isinstance(p, dict) and "text" in p]
+                                    content_str = "".join(text_parts)
+                                else:
+                                    content_str = str(msg.content)
+                                print(f"\nAgente: {content_str}")
                             elif node_name == "tools":
-                                print(f"🔧 (Consultando banco de eventos...)")
+                                print(f"🔧 (Acessando ferramenta: {msg.name}...)")
         except KeyboardInterrupt:
             print("\nEncerrando agente...")
             break
