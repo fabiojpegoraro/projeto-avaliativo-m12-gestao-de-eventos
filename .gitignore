@@ -64,3 +64,10 @@ coverage/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# ==========================
+# Agente Python
+# ==========================
+agent/venv/
+agent/.env
+agent/__pycache__/
