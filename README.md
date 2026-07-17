@@ -32,6 +32,7 @@ https://youtu.be/Ry7Zq1XsK3I
 O projeto é um monorepo contendo duas partes principais na raiz:
 - `/frontend`: Aplicação Web SPA para a interface do usuário.
 - `/backend`: API REST para fornecer os dados e regras de negócio.
+- `/agent`: Agente de Inteligência Artificial usando LangGraph/LangChain que consulta a API de eventos em linguagem natural.
 
 ## 🚀 Como Executar o Projeto
 
@@ -94,6 +95,32 @@ npm run dev
 
 ---
 
+### 3. Agente de IA (LangGraph)
+
+O agente pode ser executado via terminal e consulta a API para trazer os dados dos eventos através de comandos em linguagem natural.
+
+> **Atenção:** o backend deve estar rodando para que o agente consiga buscar os eventos. O agente requer uma chave válida da API do Google Gemini.
+
+```bash
+# 1. Acesse a pasta do agente
+cd agent
+
+# 2. Ative o ambiente virtual (se aplicável)
+source venv/bin/activate
+
+# 3. Instale as dependências
+pip install -r requirements.txt
+
+# 4. Variáveis de ambiente
+cp .env.example .env
+# IMPORTANTE: Coloque sua chave GOOGLE_API_KEY no arquivo .env
+
+# 5. Execute o agente interativo
+python src/main.py
+```
+
+---
+
 ### Scripts disponíveis
 
 | Pasta | Comando | Descrição |
@@ -106,6 +133,7 @@ npm run dev
 | `frontend` | `npm run build` | Build de produção |
 | `frontend` | `npm test` | Executa os testes unitários (Vitest) |
 | `frontend` | `npm run lint` | Verifica o código com ESLint |
+| `agent` | `python src/main.py` | Executa o agente de IA no terminal |
 
 ## 📌 Arquitetura do Sistema
 
