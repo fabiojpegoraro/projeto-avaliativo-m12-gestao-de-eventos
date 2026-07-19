@@ -97,9 +97,55 @@ npm run dev
 
 ### 3. Agente de IA (LangGraph)
 
-O agente pode ser executado via terminal e consulta a API para trazer os dados dos eventos através de comandos em linguagem natural.
+O agente pode ser executado via terminal e permite interagir com o sistema usando linguagem natural.
 
-> **Atenção:** o backend deve estar rodando para que o agente consiga buscar os eventos. O agente requer uma chave válida da API do Google Gemini.
+- **Consulta e Criação de Eventos:** O agente faz a consulta e criação de eventos consumindo os endpoints da API que está no mesmo projeto;
+- **Chave de API:** Para executá-lo, precisa de uma chave de API, que pode ser gerada a partir do link [https://aistudio.google.com/api-keys?project=gen-lang-client-0519587524](https://aistudio.google.com/api-keys?project=gen-lang-client-0519587524);
+- **Apresentação do Funcionamento:** A apresentação sobre o funcionamento do agente está no próprio repositório, e é o arquivo [docs/IntelligentEventAgent.pdf](docs/IntelligentEventAgent.pdf);
+
+#### ⚙️ Funcionamento e Fluxo de Execução
+O agente foi construído seguindo a arquitetura **ReAct (Reasoning and Acting)** com LangGraph, organizando-se no seguinte fluxo:
+1. **Entrada do Usuário:** O usuário envia uma pergunta ou instrução no terminal em linguagem natural.
+2. **Nó do Agente (`agent`):** O modelo `gemini-2.5-flash` processa o histórico do estado e decide se precisa chamar alguma ferramenta para responder à solicitação.
+3. **Decisão Condicional (`should_continue`):**
+   - Se o modelo decidir chamar uma ferramenta, o fluxo é direcionado para o nó `tools`.
+   - Se o modelo já possuir todas as informações necessárias, ele gera a resposta final e o fluxo é encerrado (`END`).
+4. **Nó das Ferramentas (`tools`):** Executa a ferramenta solicitada, insere o resultado no estado compartilhado do agente e retorna o controle para o nó do `agent` para processar a resposta final.
+
+#### 🔧 Ferramentas Integradas (Tools)
+- **`consultar_eventos`:** Consome o endpoint HTTP GET `/api/events` do backend e retorna uma listagem em formato JSON dos eventos cadastrados no banco de dados MongoDB.
+- **`cadastrar_evento`:** Consome o endpoint HTTP POST `/api/events` enviando os parâmetros fornecidos pelo usuário (`nome`, `descricao`, `data_hora`, `local`, `categoria`). A categoria é validada estritamente contra as opções aceitas: *Conferência, Workshop, Webinar, Networking, Outro*.
+
+#### 💡 Decisões Arquiteturais e Limitações
+* **Decisões:**
+  - Escolha do modelo `gemini-2.5-flash` devido ao seu custo-benefício, rapidez de resposta e excelente assertividade em chamadas de ferramentas (Function Calling).
+  - Utilização do estado do LangGraph com `add_messages` para gerenciar a cadeia de mensagens e o contexto de execução de forma estruturada.
+* **Limitações:**
+  - O agente depende diretamente da API REST backend estar em execução para consultar ou cadastrar eventos.
+  - O terminal interativo atualmente executa de forma stateless para cada pergunta (não retém histórico de conversas entre perguntas consecutivas no terminal, apenas o contexto interno durante a execução de um mesmo fluxo/turno de raciocínio).
+
+#### 💬 Exemplos de Entrada e Saída
+* **Exemplo de Consulta de Eventos:**
+  ```text
+  Você: Quais são os eventos cadastrados?
+  🔧 (Acessando ferramenta: consultar_eventos...)
+  
+  Agente: Atualmente temos os seguintes eventos cadastrados:
+  1. Python Workshop (Categoria: Workshop) - Local: São Paulo, SP em 30 de julho de 2026.
+  2. JavaScript Conference (Categoria: Conferência) - Local: Florianópolis em 20 de julho de 2027.
+  ```
+
+* **Exemplo de Cadastro de Evento:**
+  ```text
+  Você: Cadastre um evento chamado "Workshop IA" na data 2026-08-20 na Arena Digital, categoria Workshop, com a descrição "Aprenda sobre agentes de IA".
+  🔧 (Acessando ferramenta: cadastrar_evento...)
+  
+  Agente: O evento 'Workshop IA' foi cadastrado com sucesso! ID da criação no banco de dados: 6699a9cfb1836a0d4c241a78
+  ```
+
+---
+
+> **Atenção:** O backend deve estar rodando para que o agente consiga buscar e cadastrar os eventos. O agente requer uma chave válida da API do Google Gemini.
 
 ```bash
 # 1. Acesse a pasta do agente
@@ -158,6 +204,11 @@ graph TD
         State --> Axios
     end
 
+    %% Camada do Agente
+    subgraph AgentSystem [Camada do Agente - Interface CLI]
+        Agent[Agente de IA <br> LangGraph / Python]
+    end
+
     %% Camada de Backend
     subgraph Backend [Camada de Servidor - Backend API]
         RoutesBE[Rotas & Endpoints <br> Express Routes]
@@ -179,11 +230,15 @@ graph TD
 
     %% Relacionamentos e Fluxo de Dados
     User --> UI
+    User --> Agent
     
     Axios -- "Requisições REST (JSON)" --> RoutesBE
+    Agent -- "Consome API REST (JSON)" --> RoutesBE
     Models -- "Mongoose ODM" --> MongoDB
 
     %% Estilização do Diagrama
     style Frontend fill:#f9f9f9,stroke:#61dafb,stroke-width:2px
+    style AgentSystem fill:#f9f9f9,stroke:#9b59b6,stroke-width:2px
     style Backend fill:#f9f9f9,stroke:#339933,stroke-width:2px
     style Database fill:#f5f5f5,stroke:#47a248,stroke-width:2px
+```
