@@ -10,6 +10,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import interrupt, Command
 from langchain_core.tools import tool
 
 # Carrega variáveis de ambiente do arquivo .env
@@ -33,19 +34,22 @@ Regras de comportamento:
 - Para cadastrar um evento, você DEVE coletar: nome, descrição, data/hora, local e categoria.
 - A categoria deve ser uma das seguintes opções: Conferência, Workshop, Webinar, Networking, Outro.
 - A data/hora deve ser uma data FUTURA no formato ISO 8601 (ex: 2026-12-01T14:00:00Z).
-- Antes de finalizar o cadastro, confirme os dados com o usuário.
+- Antes de finalizar o cadastro, apresente um resumo e aguarde a confirmação do usuário.
 """
 
 # ==============================================================================
 # ESTADO DO AGENTE
-# Estado ampliado com campos para armazenar resultados das execuções paralelas
+# Ampliado com campos para paralelização (Card #44) e aprovação humana (Card #45)
 # ==============================================================================
 class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
-    # Campos utilizados pelo fluxo paralelo de consulta de eventos
-    parallel_events_data: Optional[str]   # Resultado do nó de busca na API (paralelo A)
-    parallel_context_data: Optional[str]  # Resultado do nó de contexto/metadados (paralelo B)
-    pending_tool_call_id: Optional[str]   # ID do tool_call aguardando resolução paralela
+    # Campos do fluxo paralelo (Card #44)
+    parallel_events_data: Optional[str]       # Resultado do nó de busca na API (paralelo A)
+    parallel_context_data: Optional[str]      # Resultado do nó de contexto/metadados (paralelo B)
+    pending_tool_call_id: Optional[str]       # ID do tool_call aguardando resolução paralela
+    # Campos do Human-in-the-Loop (Card #45)
+    human_approval_response: Optional[str]    # Resposta do usuário (s/n)
+    pending_approval_tool_call: Optional[dict] # Tool call completo aguardando aprovação
 
 # ==============================================================================
 # TOOLS
@@ -56,9 +60,8 @@ def consultar_eventos() -> str:
     """
     Consulta a API para obter a lista de eventos disponíveis.
     Retorna os eventos em formato JSON como string.
+    Esta tool é interceptada pelo roteador para execução paralela (Card #44).
     """
-    # Esta tool é interceptada pelo roteador para execução paralela.
-    # A lógica real de busca está em fetch_events_node e fetch_context_node.
     pass
 
 
@@ -72,7 +75,8 @@ def cadastrar_evento(
 ) -> str:
     """
     Cadastra um novo evento na API.
-    A data_hora deve ser fornecida em formato válido, como '2026-08-15T14:00:00Z' ou '2026-08-15'.
+    A data_hora deve ser fornecida em formato válido, como '2026-12-01T14:00:00Z'.
+    Esta tool requer APROVAÇÃO HUMANA antes de ser executada (Card #45).
     Retorna uma mensagem de sucesso com o ID do evento criado ou uma mensagem de erro.
     """
     try:
@@ -112,21 +116,19 @@ def run_llm(state: AgentState):
 
 
 # ------------------------------------------------------------------------------
-# FLUXO DE PARALELIZAÇÃO — Consulta de eventos em dois nós simultâneos
+# FLUXO PARALELO — Consulta de eventos (Card #44)
 # ------------------------------------------------------------------------------
 
 def parallel_fetch_router(state: AgentState):
     """
-    Nó de entrada do fluxo paralelo.
-    Extrai e armazena o tool_call_id para que o nó de merge possa construir
-    o ToolMessage correto. Dispara dois nós filhos em paralelo (fan-out).
+    Nó de entrada do fluxo paralelo (Card #44).
+    Captura o tool_call_id e inicializa os campos de estado transitório.
     """
     last_message = state["messages"][-1]
-    tool_call_id = None
-    for tc in last_message.tool_calls:
-        if tc["name"] == "consultar_eventos":
-            tool_call_id = tc["id"]
-            break
+    tool_call_id = next(
+        (tc["id"] for tc in last_message.tool_calls if tc["name"] == "consultar_eventos"),
+        None,
+    )
     return {
         "pending_tool_call_id": tool_call_id,
         "parallel_events_data": None,
@@ -135,53 +137,35 @@ def parallel_fetch_router(state: AgentState):
 
 
 def fetch_events_node(state: AgentState):
-    """
-    NÓ PARALELO A — Busca os eventos reais na API REST.
-    Executado simultaneamente com fetch_context_node pelo LangGraph.
-    """
+    """NÓ PARALELO A — Busca eventos reais na API REST."""
     try:
         response = requests.get(f"{API_BASE_URL}/events", timeout=(5, 30))
         response.raise_for_status()
         events = response.json()
-        if not events:
-            result = "Nenhum evento encontrado."
-        else:
-            result = json.dumps(events, ensure_ascii=False, indent=2)
+        result = "Nenhum evento encontrado." if not events else json.dumps(events, ensure_ascii=False, indent=2)
     except requests.exceptions.RequestException as e:
         result = f"Erro ao acessar a API de eventos: {str(e)}"
     return {"parallel_events_data": result}
 
 
 def fetch_context_node(state: AgentState):
-    """
-    NÓ PARALELO B — Gera metadados de contexto para enriquecer a resposta.
-    Executado simultaneamente com fetch_events_node pelo LangGraph.
-    """
+    """NÓ PARALELO B — Gera metadados de contexto para enriquecer a resposta."""
     now = datetime.now(timezone.utc).strftime("%d/%m/%Y às %H:%M UTC")
-    total_hint = "Dados obtidos diretamente da base de eventos do sistema."
-    context = f"📅 Consulta realizada em: {now}\nℹ️  {total_hint}"
+    context = f"📅 Consulta realizada em: {now}\nℹ️  Dados obtidos diretamente da base de eventos do sistema."
     return {"parallel_context_data": context}
 
 
 def merge_parallel_results(state: AgentState):
-    """
-    Nó de convergência — mescla os resultados dos dois nós paralelos.
-    Constrói um ToolMessage unificado para ser processado pelo agente.
-    """
+    """Nó de convergência — mescla os resultados dos dois nós paralelos."""
     events_data = state.get("parallel_events_data") or "Sem dados de eventos."
     context_data = state.get("parallel_context_data") or ""
     tool_call_id = state.get("pending_tool_call_id") or "unknown"
 
-    # Combina os resultados dos dois ramos paralelos
-    merged_content = f"{events_data}\n\n{context_data}"
-
     tool_msg = ToolMessage(
-        content=merged_content,
+        content=f"{events_data}\n\n{context_data}",
         name="consultar_eventos",
         tool_call_id=tool_call_id,
     )
-
-    # Limpa os campos de estado transitórios após o merge
     return {
         "messages": [tool_msg],
         "parallel_events_data": None,
@@ -190,18 +174,106 @@ def merge_parallel_results(state: AgentState):
     }
 
 
+# ------------------------------------------------------------------------------
+# FLUXO HUMAN-IN-THE-LOOP — Aprovação humana para cadastrar_evento (Card #45)
+# ------------------------------------------------------------------------------
+
+def human_approval(state: AgentState):
+    """
+    Nó de aprovação humana (Card #45).
+    Usa interrupt() para pausar o grafo e aguardar confirmação Y/N do usuário
+    antes de executar a ação de escrita cadastrar_evento no backend.
+    """
+    last_message = state["messages"][-1]
+    tool_call = next(
+        (tc for tc in last_message.tool_calls if tc["name"] == "cadastrar_evento"),
+        None,
+    )
+
+    if not tool_call:
+        return {}
+
+    args = tool_call["args"]
+
+    # interrupt() suspende o grafo aqui e retorna o valor passado ao Command(resume=...)
+    # O CLI detecta o sinal __interrupt__ e exibe as informações ao usuário
+    user_response = interrupt({
+        "message": "⚠️  Ação de escrita detectada. Confirme o cadastro do evento antes de prosseguir:",
+        "event_data": {
+            "Nome": args.get("nome"),
+            "Descrição": args.get("descricao"),
+            "Data/Hora": args.get("data_hora"),
+            "Local": args.get("local"),
+            "Categoria": args.get("categoria"),
+        },
+    })
+
+    return {
+        "human_approval_response": str(user_response).strip().lower(),
+        "pending_approval_tool_call": tool_call,
+    }
+
+
+def route_after_approval(state: AgentState):
+    """Roteia com base na resposta de aprovação humana."""
+    response = (state.get("human_approval_response") or "n").strip().lower()
+    if response in ["s", "y", "sim", "yes"]:
+        return "execute_approved_tool"
+    return "cancel_tool"
+
+
+def execute_approved_tool(state: AgentState):
+    """Executa cadastrar_evento após aprovação humana confirmada."""
+    tool_call = state.get("pending_approval_tool_call")
+    if not tool_call:
+        return {
+            "pending_approval_tool_call": None,
+            "human_approval_response": None,
+        }
+
+    tool_map = {t.name: t for t in tools}
+    result = tool_map["cadastrar_evento"].invoke(tool_call["args"])
+
+    return {
+        "messages": [
+            ToolMessage(
+                content=str(result),
+                name="cadastrar_evento",
+                tool_call_id=tool_call["id"],
+            )
+        ],
+        "pending_approval_tool_call": None,
+        "human_approval_response": None,
+    }
+
+
+def cancel_tool(state: AgentState):
+    """Cancela a tool call e informa o agente que o usuário recusou."""
+    tool_call = state.get("pending_approval_tool_call")
+    tool_call_id = tool_call["id"] if tool_call else "unknown"
+
+    return {
+        "messages": [
+            ToolMessage(
+                content="❌ Operação cancelada pelo usuário. O evento NÃO foi cadastrado.",
+                name="cadastrar_evento",
+                tool_call_id=tool_call_id,
+            )
+        ],
+        "pending_approval_tool_call": None,
+        "human_approval_response": None,
+    }
+
+
 def direct_tools(state: AgentState):
-    """
-    Executa tools diretamente (ex: cadastrar_evento), sem paralelização.
-    Utilizado para ações de escrita que não se beneficiam de fan-out.
-    """
+    """Executa tools sem necessidade de aprovação (fallback para tools genéricas)."""
     last_message = state["messages"][-1]
     tool_map = {t.name: t for t in tools}
     tool_responses = []
 
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
-        if tool_name in tool_map and tool_name != "consultar_eventos":
+        if tool_name in tool_map and tool_name not in ("consultar_eventos", "cadastrar_evento"):
             result = tool_map[tool_name].invoke(tool_call["args"])
             tool_responses.append(
                 ToolMessage(
@@ -220,8 +292,9 @@ def direct_tools(state: AgentState):
 def should_continue(state: AgentState):
     """
     Roteia o fluxo após o nó do agente:
-    - 'parallel_fetch_router' → tool consultar_eventos (execução paralela)
-    - 'direct_tools'          → demais tools (execução direta)
+    - 'parallel_fetch_router' → consultar_eventos (paralelização, Card #44)
+    - 'human_approval'        → cadastrar_evento (aprovação humana, Card #45)
+    - 'direct_tools'          → demais tools (sem restrição)
     - END                     → sem tool calls, encerra o turno
     """
     last_message = state["messages"][-1]
@@ -232,13 +305,14 @@ def should_continue(state: AgentState):
     for tc in last_message.tool_calls:
         if tc["name"] == "consultar_eventos":
             return "parallel_fetch_router"
+        if tc["name"] == "cadastrar_evento":
+            return "human_approval"
 
     return "direct_tools"
 
 
 # ==============================================================================
 # MONTAGEM DO GRAFO LANGGRAPH
-# Padrão: Fan-Out → [Nó A || Nó B] → Merge → Agente
 # ==============================================================================
 workflow = StateGraph(AgentState)
 
@@ -246,36 +320,50 @@ workflow = StateGraph(AgentState)
 workflow.add_node("agent", run_llm)
 workflow.add_node("direct_tools", direct_tools)
 
-# Nós do fluxo paralelo
+# Nós do fluxo paralelo (Card #44)
 workflow.add_node("parallel_fetch_router", parallel_fetch_router)
-workflow.add_node("fetch_events_node", fetch_events_node)       # Paralelo A
-workflow.add_node("fetch_context_node", fetch_context_node)     # Paralelo B
+workflow.add_node("fetch_events_node", fetch_events_node)
+workflow.add_node("fetch_context_node", fetch_context_node)
 workflow.add_node("merge_parallel_results", merge_parallel_results)
+
+# Nós do fluxo Human-in-the-Loop (Card #45)
+workflow.add_node("human_approval", human_approval)
+workflow.add_node("execute_approved_tool", execute_approved_tool)
+workflow.add_node("cancel_tool", cancel_tool)
 
 # Ponto de entrada
 workflow.set_entry_point("agent")
 
-# Roteamento condicional a partir do agente
+# Roteamento condicional principal (3 caminhos)
 workflow.add_conditional_edges(
     "agent",
     should_continue,
     {
         "parallel_fetch_router": "parallel_fetch_router",
+        "human_approval": "human_approval",
         "direct_tools": "direct_tools",
         END: END,
     },
 )
 
-# Fan-out: parallel_fetch_router → [fetch_events_node || fetch_context_node] (paralelo)
+# Fan-out paralelo: router → [fetch_events || fetch_context] → merge (Card #44)
 workflow.add_edge("parallel_fetch_router", "fetch_events_node")
 workflow.add_edge("parallel_fetch_router", "fetch_context_node")
-
-# Convergência: ambos os nós paralelos → merge_parallel_results
 workflow.add_edge("fetch_events_node", "merge_parallel_results")
 workflow.add_edge("fetch_context_node", "merge_parallel_results")
-
-# Após merge, retorna ao agente
 workflow.add_edge("merge_parallel_results", "agent")
+
+# Human-in-the-Loop: approval → [execute | cancel] → agent (Card #45)
+workflow.add_conditional_edges(
+    "human_approval",
+    route_after_approval,
+    {
+        "execute_approved_tool": "execute_approved_tool",
+        "cancel_tool": "cancel_tool",
+    },
+)
+workflow.add_edge("execute_approved_tool", "agent")
+workflow.add_edge("cancel_tool", "agent")
 
 # Tools diretas retornam ao agente
 workflow.add_edge("direct_tools", "agent")
@@ -284,13 +372,92 @@ workflow.add_edge("direct_tools", "agent")
 memory = MemorySaver()
 app = workflow.compile(checkpointer=memory)
 
+
 # ==============================================================================
-# PONTO DE ENTRADA — CLI interativo com memória de sessão e paralelização
+# HELPER — Processa stream do LangGraph com suporte a interrupts
+# ==============================================================================
+
+def _print_stream_updates(node_name: str, state_update: dict) -> None:
+    """Exibe atualizações de estado relevantes do stream no terminal."""
+    if node_name == "agent":
+        for msg in state_update.get("messages", []):
+            if msg.content:
+                content_str = (
+                    "".join(p.get("text", "") for p in msg.content if isinstance(p, dict) and "text" in p)
+                    if isinstance(msg.content, list)
+                    else str(msg.content)
+                )
+                if content_str:
+                    print(f"\nAgente: {content_str}")
+    elif node_name == "fetch_events_node":
+        print("  ⚡ [Paralelo A] Buscando eventos na API...")
+    elif node_name == "fetch_context_node":
+        print("  ⚡ [Paralelo B] Gerando contexto e metadados...")
+    elif node_name == "merge_parallel_results":
+        print("  🔀 Mesclando resultados paralelos...")
+    elif node_name == "human_approval":
+        print("  🔐 Verificando aprovação humana...")
+    elif node_name == "execute_approved_tool":
+        print("  ✅ Aprovado! Executando cadastro...")
+    elif node_name == "cancel_tool":
+        print("  ❌ Cancelado. Informando o agente...")
+    elif node_name == "direct_tools":
+        for msg in state_update.get("messages", []):
+            print(f"  🔧 (Executando ferramenta: {getattr(msg, 'name', '?')}...)")
+
+
+def stream_with_interrupt_handling(inputs_or_command, config: dict) -> None:
+    """
+    Executa o grafo LangGraph e trata interrupts de aprovação humana de forma interativa.
+    Detecta o sinal __interrupt__, exibe os dados do evento ao usuário, coleta Y/N
+    e retoma o grafo com Command(resume=resposta).
+    """
+    pending = inputs_or_command
+
+    while True:
+        interrupted = False
+        interrupt_payload = None
+
+        for output in app.stream(pending, config=config, stream_mode="updates"):
+            for node_name, state_update in output.items():
+                if node_name == "__interrupt__":
+                    interrupted = True
+                    # O payload vem como tupla de objetos Interrupt
+                    interrupt_payload = state_update[0].value if state_update else {}
+                else:
+                    _print_stream_updates(node_name, state_update)
+
+        if not interrupted:
+            break
+
+        # ── Tratamento interativo do interrupt ──────────────────────────────
+        print("\n" + "=" * 60)
+        print("🔐  APROVAÇÃO HUMANA NECESSÁRIA")
+        print("=" * 60)
+        print(f"\n{interrupt_payload.get('message', 'Confirme a ação:')}")
+
+        event_data = interrupt_payload.get("event_data", {})
+        if event_data:
+            print()
+            for field, value in event_data.items():
+                print(f"   {field}: {value}")
+
+        print()
+        raw_input = input("➡️  Confirmar cadastro? [s = sim / n = cancelar]: ").strip()
+        print("=" * 60 + "\n")
+
+        # Retoma o grafo com a resposta do usuário
+        pending = Command(resume=raw_input)
+
+
+# ==============================================================================
+# PONTO DE ENTRADA — CLI interativo
 # ==============================================================================
 if __name__ == "__main__":
     print("🤖 Agente de Eventos iniciado!")
-    print("💾 Memória de sessão ativa — o agente lembrará do contexto desta conversa.")
+    print("💾 Memória de sessão ativa — contexto preservado durante a conversa.")
     print("⚡ Paralelização ativa — consultas de eventos buscam dados em paralelo.")
+    print("🔐 Governança ativa — cadastros requerem aprovação humana antes de executar.")
     print("Digite 'sair' ou 'exit' para encerrar.")
     print("-" * 60)
 
@@ -298,19 +465,20 @@ if __name__ == "__main__":
         print("⚠️  AVISO: A variável GOOGLE_API_KEY não foi encontrada no .env.")
         print("O agente não funcionará corretamente sem ela.\n")
 
-    # Gera um thread_id único para esta sessão (Card #43 — isolamento de contexto)
+    # UUID único por sessão — isola contexto entre sessões distintas (Card #43)
     session_id = str(uuid.uuid4())
     print(f"🔑 Thread ID da sessão: {session_id}\n")
 
-    # Configuração do thread passada em cada invocação para recuperar o histórico
     config = {"configurable": {"thread_id": session_id}}
 
-    # Inicializa o estado com System Prompt e campos de paralelização zerados
+    # Inicializa o estado com System Prompt e todos os campos opcionais zerados
     initial_state = {
         "messages": [SystemMessage(content=SYSTEM_PROMPT)],
         "parallel_events_data": None,
         "parallel_context_data": None,
         "pending_tool_call_id": None,
+        "human_approval_response": None,
+        "pending_approval_tool_call": None,
     }
     app.invoke(initial_state, config=config)
 
@@ -324,32 +492,10 @@ if __name__ == "__main__":
             if not user_input.strip():
                 continue
 
-            inputs = {"messages": [HumanMessage(content=user_input)]}
-
-            # Executa o grafo com thread_id para recuperar histórico (Card #43)
-            for output in app.stream(inputs, config=config, stream_mode="updates"):
-                for node_name, state_update in output.items():
-                    if "messages" in state_update:
-                        for msg in state_update["messages"]:
-                            if node_name == "agent" and msg.content:
-                                if isinstance(msg.content, list):
-                                    text_parts = [
-                                        p.get("text", "")
-                                        for p in msg.content
-                                        if isinstance(p, dict) and "text" in p
-                                    ]
-                                    content_str = "".join(text_parts)
-                                else:
-                                    content_str = str(msg.content)
-                                print(f"\nAgente: {content_str}")
-                            elif node_name == "fetch_events_node":
-                                print("⚡ [Paralelo A] Buscando eventos na API...")
-                            elif node_name == "fetch_context_node":
-                                print("⚡ [Paralelo B] Gerando contexto e metadados...")
-                            elif node_name == "merge_parallel_results":
-                                print("🔀 Mesclando resultados paralelos...")
-                            elif node_name == "direct_tools":
-                                print(f"🔧 (Executando ferramenta: {msg.name}...)")
+            stream_with_interrupt_handling(
+                {"messages": [HumanMessage(content=user_input)]},
+                config,
+            )
 
         except KeyboardInterrupt:
             print("\nEncerrando agente...")
