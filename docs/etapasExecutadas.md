@@ -105,3 +105,65 @@ python src/main.py
 # ⚡ [Paralelo B] Gerando contexto e metadados...
 # 🔀 Mesclando resultados paralelos...
 ```
+
+---
+
+## Card #45 — `[Governança] Implementar Aprovação Humana (Human-in-the-Loop)`
+
+- **Branch:** `feature/human-in-the-loop`
+- **Issue:** https://github.com/fabiojpegoraro/projeto-avaliativo-m12-gestao-de-eventos/issues/45
+- **Data de execução:** 2026-08-24
+- **Requisito atendido:** Seção 4.5 do documento de avaliação (Segurança, governança e limites de autonomia)
+
+### O que foi feito
+
+Implementado o mecanismo de **aprovação humana (Human-in-the-Loop)** usando a API nativa `interrupt()` do LangGraph. A ação de escrita `cadastrar_evento` agora é interceptada antes de atingir o backend. O grafo pausa, exibe os dados do evento no terminal e aguarda o usuário confirmar ou cancelar com `s` (sim) ou `n` (não).
+
+```
+agent → human_approval [interrupt()] ─┬→ execute_approved_tool → agent  (aprovado)
+                                       └→ cancel_tool           → agent  (cancelado)
+```
+
+Ações de leitura (`consultar_eventos`) **não** são afetadas e seguem pelo fluxo paralelo normal.
+
+### Arquivos modificados
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `agent/src/main.py` | Adição de 3 nós (`human_approval`, `execute_approved_tool`, `cancel_tool`), função `route_after_approval`, helper `stream_with_interrupt_handling()`, ampliação do `AgentState` com `human_approval_response` e `pending_approval_tool_call` |
+| `docs/prompts/2026-08-24_implementacao-human-in-the-loop.md` | Log do prompt e decisões técnicas |
+
+### Decisões técnicas
+
+1. **`interrupt()` do LangGraph:** A função `interrupt(value)` de `langgraph.types` é a forma idiomática de pausar o grafo de forma controlada. O `value` (dados do evento a confirmar) fica disponível no signal `__interrupt__` do stream, que o CLI usa para exibir as informações ao usuário. Ao retomar com `Command(resume=resposta)`, o valor se torna o retorno da chamada `interrupt()` dentro do nó.
+
+2. **Helper `stream_with_interrupt_handling()`:** O loop do CLI foi encapsulado em uma função que suporta múltiplas interrupções encadeadas. Quando detecta `__interrupt__` no stream, exibe os dados, coleta a entrada e chama `app.stream(Command(resume=...), config)` para retomar — sem precisar reiniciar o grafo ou reconstruir o estado.
+
+3. **`pending_approval_tool_call` no estado:** O objeto completo do `tool_call` (incluindo `id`, `name` e `args`) é preservado no estado após o `interrupt`. Isso permite que `execute_approved_tool` construa o `ToolMessage` com o `tool_call_id` correto, mantendo a integridade do protocolo de tool calls do LangChain.
+
+4. **Dois nós de desfecho (`execute_approved_tool` / `cancel_tool`):** Ambos retornam um `ToolMessage` ao agente — aprovado com o resultado real, cancelado com mensagem explicativa. Isso garante que o LLM sempre receba um resultado para o `tool_call` que iniciou, evitando estado inválido.
+
+5. **Roteamento em 3 caminhos:** O `should_continue` agora distingue: `consultar_eventos` → paralelo, `cadastrar_evento` → aprovação humana, outros → direto. Arquitetura limpa e extensível para novas tools com diferentes políticas de governança.
+
+### Como testar
+
+```bash
+cd agent
+source venv/bin/activate
+python src/main.py
+
+# Exemplo de fluxo:
+# Você: cadastre um evento chamado Python Summit em 2026-12-10
+# Agente: [coleta dados...]
+#
+# ============================================================
+# 🔐  APROVAÇÃO HUMANA NECESSÁRIA
+# ============================================================
+# ⚠️  Ação de escrita detectada. Confirme o cadastro do evento antes de prosseguir:
+#    Nome: Python Summit
+#    Data/Hora: 2026-12-10T14:00:00Z
+#    ...
+# ➡️  Confirmar cadastro? [s = sim / n = cancelar]: n
+# ❌ Cancelado. Informando o agente...
+# Agente: O evento não foi cadastrado pois a operação foi cancelada. Posso ajudá-lo com mais alguma coisa?
+```
