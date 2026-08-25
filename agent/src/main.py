@@ -2,8 +2,9 @@ import os
 import uuid
 import json
 import requests
+from datetime import datetime, timezone
 from dotenv import load_dotenv
-from typing import Annotated, TypedDict, Literal
+from typing import Annotated, TypedDict, Literal, Optional
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
@@ -37,9 +38,14 @@ Regras de comportamento:
 
 # ==============================================================================
 # ESTADO DO AGENTE
+# Estado ampliado com campos para armazenar resultados das execuções paralelas
 # ==============================================================================
 class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
+    # Campos utilizados pelo fluxo paralelo de consulta de eventos
+    parallel_events_data: Optional[str]   # Resultado do nó de busca na API (paralelo A)
+    parallel_context_data: Optional[str]  # Resultado do nó de contexto/metadados (paralelo B)
+    pending_tool_call_id: Optional[str]   # ID do tool_call aguardando resolução paralela
 
 # ==============================================================================
 # TOOLS
@@ -51,17 +57,9 @@ def consultar_eventos() -> str:
     Consulta a API para obter a lista de eventos disponíveis.
     Retorna os eventos em formato JSON como string.
     """
-    try:
-        response = requests.get(f"{API_BASE_URL}/events", timeout=(5, 30))
-        response.raise_for_status()
-        events = response.json()
-
-        if not events:
-            return "Nenhum evento encontrado."
-
-        return json.dumps(events, ensure_ascii=False, indent=2)
-    except requests.exceptions.RequestException as e:
-        return f"Erro ao acessar a API de eventos: {str(e)}"
+    # Esta tool é interceptada pelo roteador para execução paralela.
+    # A lógica real de busca está em fetch_events_node e fetch_context_node.
+    pass
 
 
 @tool
@@ -98,10 +96,8 @@ def cadastrar_evento(
 # ==============================================================================
 # CONFIGURAÇÃO DO LLM
 # ==============================================================================
-# Importante: Requer a variável GOOGLE_API_KEY no arquivo .env
 llm = ChatGoogleGenerativeAI(model=os.getenv("LLM_MODEL", "gemini-2.5-flash"), temperature=0)
 
-# Vinculando as tools ao modelo
 tools = [consultar_eventos, cadastrar_evento]
 llm_with_tools = llm.bind_tools(tools)
 
@@ -110,28 +106,107 @@ llm_with_tools = llm.bind_tools(tools)
 # ==============================================================================
 
 def run_llm(state: AgentState):
-    """Executa o modelo para processar a conversa atual e decidir os próximos passos."""
-    messages = state["messages"]
-    response = llm_with_tools.invoke(messages)
+    """Executa o modelo para processar a conversa e decidir os próximos passos."""
+    response = llm_with_tools.invoke(state["messages"])
     return {"messages": [response]}
 
 
-def run_tools(state: AgentState):
-    """Executa as ferramentas caso o LLM solicite."""
-    messages = state["messages"]
-    last_message = messages[-1]
+# ------------------------------------------------------------------------------
+# FLUXO DE PARALELIZAÇÃO — Consulta de eventos em dois nós simultâneos
+# ------------------------------------------------------------------------------
 
-    tool_responses = []
+def parallel_fetch_router(state: AgentState):
+    """
+    Nó de entrada do fluxo paralelo.
+    Extrai e armazena o tool_call_id para que o nó de merge possa construir
+    o ToolMessage correto. Dispara dois nós filhos em paralelo (fan-out).
+    """
+    last_message = state["messages"][-1]
+    tool_call_id = None
+    for tc in last_message.tool_calls:
+        if tc["name"] == "consultar_eventos":
+            tool_call_id = tc["id"]
+            break
+    return {
+        "pending_tool_call_id": tool_call_id,
+        "parallel_events_data": None,
+        "parallel_context_data": None,
+    }
+
+
+def fetch_events_node(state: AgentState):
+    """
+    NÓ PARALELO A — Busca os eventos reais na API REST.
+    Executado simultaneamente com fetch_context_node pelo LangGraph.
+    """
+    try:
+        response = requests.get(f"{API_BASE_URL}/events", timeout=(5, 30))
+        response.raise_for_status()
+        events = response.json()
+        if not events:
+            result = "Nenhum evento encontrado."
+        else:
+            result = json.dumps(events, ensure_ascii=False, indent=2)
+    except requests.exceptions.RequestException as e:
+        result = f"Erro ao acessar a API de eventos: {str(e)}"
+    return {"parallel_events_data": result}
+
+
+def fetch_context_node(state: AgentState):
+    """
+    NÓ PARALELO B — Gera metadados de contexto para enriquecer a resposta.
+    Executado simultaneamente com fetch_events_node pelo LangGraph.
+    """
+    now = datetime.now(timezone.utc).strftime("%d/%m/%Y às %H:%M UTC")
+    total_hint = "Dados obtidos diretamente da base de eventos do sistema."
+    context = f"📅 Consulta realizada em: {now}\nℹ️  {total_hint}"
+    return {"parallel_context_data": context}
+
+
+def merge_parallel_results(state: AgentState):
+    """
+    Nó de convergência — mescla os resultados dos dois nós paralelos.
+    Constrói um ToolMessage unificado para ser processado pelo agente.
+    """
+    events_data = state.get("parallel_events_data") or "Sem dados de eventos."
+    context_data = state.get("parallel_context_data") or ""
+    tool_call_id = state.get("pending_tool_call_id") or "unknown"
+
+    # Combina os resultados dos dois ramos paralelos
+    merged_content = f"{events_data}\n\n{context_data}"
+
+    tool_msg = ToolMessage(
+        content=merged_content,
+        name="consultar_eventos",
+        tool_call_id=tool_call_id,
+    )
+
+    # Limpa os campos de estado transitórios após o merge
+    return {
+        "messages": [tool_msg],
+        "parallel_events_data": None,
+        "parallel_context_data": None,
+        "pending_tool_call_id": None,
+    }
+
+
+def direct_tools(state: AgentState):
+    """
+    Executa tools diretamente (ex: cadastrar_evento), sem paralelização.
+    Utilizado para ações de escrita que não se beneficiam de fan-out.
+    """
+    last_message = state["messages"][-1]
     tool_map = {t.name: t for t in tools}
+    tool_responses = []
 
     for tool_call in last_message.tool_calls:
-        if tool_call["name"] in tool_map:
-            tool_func = tool_map[tool_call["name"]]
-            result = tool_func.invoke(tool_call["args"])
+        tool_name = tool_call["name"]
+        if tool_name in tool_map and tool_name != "consultar_eventos":
+            result = tool_map[tool_name].invoke(tool_call["args"])
             tool_responses.append(
                 ToolMessage(
                     content=str(result),
-                    name=tool_call["name"],
+                    name=tool_name,
                     tool_call_id=tool_call["id"],
                 )
             )
@@ -143,46 +218,79 @@ def run_tools(state: AgentState):
 # ==============================================================================
 
 def should_continue(state: AgentState):
-    """Verifica se o LLM solicitou a execução de alguma tool, ou se deve finalizar."""
-    messages = state["messages"]
-    last_message = messages[-1]
+    """
+    Roteia o fluxo após o nó do agente:
+    - 'parallel_fetch_router' → tool consultar_eventos (execução paralela)
+    - 'direct_tools'          → demais tools (execução direta)
+    - END                     → sem tool calls, encerra o turno
+    """
+    last_message = state["messages"][-1]
 
-    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        return "tools"
-    return END
+    if not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
+        return END
+
+    for tc in last_message.tool_calls:
+        if tc["name"] == "consultar_eventos":
+            return "parallel_fetch_router"
+
+    return "direct_tools"
 
 
 # ==============================================================================
-# GRAFO LANGGRAPH COM MEMÓRIA PERSISTENTE
+# MONTAGEM DO GRAFO LANGGRAPH
+# Padrão: Fan-Out → [Nó A || Nó B] → Merge → Agente
 # ==============================================================================
 workflow = StateGraph(AgentState)
 
-# Adiciona os nós
+# Nós principais
 workflow.add_node("agent", run_llm)
-workflow.add_node("tools", run_tools)
+workflow.add_node("direct_tools", direct_tools)
 
-# Define o fluxo
+# Nós do fluxo paralelo
+workflow.add_node("parallel_fetch_router", parallel_fetch_router)
+workflow.add_node("fetch_events_node", fetch_events_node)       # Paralelo A
+workflow.add_node("fetch_context_node", fetch_context_node)     # Paralelo B
+workflow.add_node("merge_parallel_results", merge_parallel_results)
+
+# Ponto de entrada
 workflow.set_entry_point("agent")
+
+# Roteamento condicional a partir do agente
 workflow.add_conditional_edges(
     "agent",
     should_continue,
     {
-        "tools": "tools",
+        "parallel_fetch_router": "parallel_fetch_router",
+        "direct_tools": "direct_tools",
         END: END,
     },
 )
-workflow.add_edge("tools", "agent")
 
-# Compila o grafo com MemorySaver (memória persistente por thread_id dentro da sessão)
+# Fan-out: parallel_fetch_router → [fetch_events_node || fetch_context_node] (paralelo)
+workflow.add_edge("parallel_fetch_router", "fetch_events_node")
+workflow.add_edge("parallel_fetch_router", "fetch_context_node")
+
+# Convergência: ambos os nós paralelos → merge_parallel_results
+workflow.add_edge("fetch_events_node", "merge_parallel_results")
+workflow.add_edge("fetch_context_node", "merge_parallel_results")
+
+# Após merge, retorna ao agente
+workflow.add_edge("merge_parallel_results", "agent")
+
+# Tools diretas retornam ao agente
+workflow.add_edge("direct_tools", "agent")
+
+# Compila o grafo com MemorySaver (Card #43 — memória persistente de sessão)
 memory = MemorySaver()
 app = workflow.compile(checkpointer=memory)
 
 # ==============================================================================
-# PONTO DE ENTRADA — CLI interativo com memória de sessão
+# PONTO DE ENTRADA — CLI interativo com memória de sessão e paralelização
 # ==============================================================================
 if __name__ == "__main__":
     print("🤖 Agente de Eventos iniciado!")
     print("💾 Memória de sessão ativa — o agente lembrará do contexto desta conversa.")
+    print("⚡ Paralelização ativa — consultas de eventos buscam dados em paralelo.")
     print("Digite 'sair' ou 'exit' para encerrar.")
     print("-" * 60)
 
@@ -190,16 +298,21 @@ if __name__ == "__main__":
         print("⚠️  AVISO: A variável GOOGLE_API_KEY não foi encontrada no .env.")
         print("O agente não funcionará corretamente sem ela.\n")
 
-    # Gera um thread_id único para esta sessão — garante isolamento entre sessões
+    # Gera um thread_id único para esta sessão (Card #43 — isolamento de contexto)
     session_id = str(uuid.uuid4())
     print(f"🔑 Thread ID da sessão: {session_id}\n")
 
-    # Configuração do thread — passada em cada invocação para recuperar o histórico
+    # Configuração do thread passada em cada invocação para recuperar o histórico
     config = {"configurable": {"thread_id": session_id}}
 
-    # Inicializa o histórico com o System Prompt (apenas na primeira mensagem)
-    initial_message = SystemMessage(content=SYSTEM_PROMPT)
-    app.invoke({"messages": [initial_message]}, config=config)
+    # Inicializa o estado com System Prompt e campos de paralelização zerados
+    initial_state = {
+        "messages": [SystemMessage(content=SYSTEM_PROMPT)],
+        "parallel_events_data": None,
+        "parallel_context_data": None,
+        "pending_tool_call_id": None,
+    }
+    app.invoke(initial_state, config=config)
 
     while True:
         try:
@@ -213,13 +326,12 @@ if __name__ == "__main__":
 
             inputs = {"messages": [HumanMessage(content=user_input)]}
 
-            # Executa o grafo passando a config com thread_id para recuperar histórico
+            # Executa o grafo com thread_id para recuperar histórico (Card #43)
             for output in app.stream(inputs, config=config, stream_mode="updates"):
                 for node_name, state_update in output.items():
                     if "messages" in state_update:
                         for msg in state_update["messages"]:
                             if node_name == "agent" and msg.content:
-                                # Trata o retorno em formato de blocos (lista de dicionários)
                                 if isinstance(msg.content, list):
                                     text_parts = [
                                         p.get("text", "")
@@ -230,8 +342,14 @@ if __name__ == "__main__":
                                 else:
                                     content_str = str(msg.content)
                                 print(f"\nAgente: {content_str}")
-                            elif node_name == "tools":
-                                print(f"🔧 (Acessando ferramenta: {msg.name}...)")
+                            elif node_name == "fetch_events_node":
+                                print("⚡ [Paralelo A] Buscando eventos na API...")
+                            elif node_name == "fetch_context_node":
+                                print("⚡ [Paralelo B] Gerando contexto e metadados...")
+                            elif node_name == "merge_parallel_results":
+                                print("🔀 Mesclando resultados paralelos...")
+                            elif node_name == "direct_tools":
+                                print(f"🔧 (Executando ferramenta: {msg.name}...)")
 
         except KeyboardInterrupt:
             print("\nEncerrando agente...")
