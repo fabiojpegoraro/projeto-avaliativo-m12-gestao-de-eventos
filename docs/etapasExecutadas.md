@@ -433,3 +433,28 @@ O Agente IA atuou como revisor de código para analisar o orquestrador principal
 
 Documentação completa do Review: [`docs/qa/code-review.md`](./qa/code-review.md)
 
+---
+
+## Card #53 — `[Eng. Prompt] Documentar um ciclo de Refinamento de Prompt`
+
+- **Branch:** `feature/prompt-engineering`
+- **Issue:** https://github.com/fabiojpegoraro/projeto-avaliativo-m12-gestao-de-eventos/issues/53
+- **Data de execução:** 2026-08-25
+- **Requisito atendido:** Seção 4.5 do documento de avaliação (Engenharia de Prompt Aplicada).
+
+### O que foi feito
+
+Foi elaborado um documento técnico relatando o processo de construção e evolução do *System Prompt* central do Agente de IA, demonstrando técnicas de contenção e defesa adversarial (evitar fuga de escopo).
+
+- Criação do artefato `docs/refinamento-prompt.md` contendo as 3 iterações de design do prompt.
+- Aplicação documentada de técnicas: *Negative Prompting*, *Role-playing*, *Absolute Constraints*, e *Defense Against Prompt Injection*.
+
+### Arquivos modificados/criados
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `docs/refinamento-prompt.md` | Criação do documento exigido no requisito 4.5 detalhando o refinamento e as técnicas aplicadas no agente. |
+
+### Decisões técnicas
+
+1. **Foco em Segurança:** Optou-se por documentar o aspecto de restrição de domínio (o agente recusar perguntas fora do tema de Eventos ou tentativas de modo DAN) por ser a tarefa mais complexa que um LLM enfrenta em sistemas de atendimento corporativo, demonstrando maturidade na Engenharia de Prompt.
