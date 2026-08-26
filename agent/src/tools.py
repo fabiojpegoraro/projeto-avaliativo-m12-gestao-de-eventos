@@ -15,7 +15,7 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:3001/api")
 # Como o Review da IA sugere extrair as tools, vamos injetar as sessões HTTP globais 
 # instanciadas dinamicamente dentro da tool (ou recebidas pelo config/context).
 
-from .utils import _write_session, _TIMEOUT, _format_request_error
+from utils import _write_session, _TIMEOUT, _format_request_error
 
 @tool
 def consultar_eventos() -> str:
@@ -58,3 +58,27 @@ def cadastrar_evento(
         return f"Evento '{nome}' cadastrado com sucesso! ID: {event.get('_id', 'N/A')}"
     except requests.exceptions.RequestException as e:
         return _format_request_error(e, "cadastrar o evento")
+
+@tool
+def notificar_equipe(
+    mensagem: str,
+    nivel: Literal["info", "warning", "error"] = "info",
+) -> str:
+    """
+    Integração Low-Code (Card #52): Envia uma notificação para a equipe via n8n.
+    Útil para alertar sobre eventos importantes, falhas ou ações suspeitas.
+    """
+    # Usa webhook-test por padrão para facilitar a visualização no n8n durante os testes
+    n8n_webhook_url = os.getenv("N8N_WEBHOOK_URL", "http://localhost:5678/webhook-test/novo-evento")
+    try:
+        payload = {
+            "message": mensagem,
+            "level": nivel,
+            "source": "AI Agent"
+        }
+        # Timeout baixo, pois webhook não deve bloquear o agente
+        response = _write_session.post(n8n_webhook_url, json=payload, timeout=(3, 5))
+        response.raise_for_status()
+        return "Notificação enviada com sucesso para a equipe via n8n."
+    except requests.exceptions.RequestException as e:
+        return _format_request_error(e, "notificar a equipe (webhook n8n falhou)")

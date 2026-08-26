@@ -167,6 +167,27 @@ python src/main.py
 
 ---
 
+### 4. Integração n8n (Opcional - Notificações)
+
+O agente possui uma ferramenta nativa (`notificar_equipe`) capaz de disparar alertas (Webhooks) para um servidor n8n. Para testar o fluxo de automação Low-Code (Card #52):
+
+```bash
+# 1. Inicie o n8n localmente via Docker (porta 5678)
+docker run -it --rm \
+  --name n8n \
+  -p 5678:5678 \
+  -e N8N_SECURE_COOKIE=false \
+  n8nio/n8n:1.121.0
+
+# 2. Acesse http://localhost:5678 e pule as configurações iniciais
+# 3. No menu lateral, clique em "Workflows" > "Import from File"
+# 4. Selecione o arquivo docs/n8n-webhook-workflow.json deste repositório
+# 5. Ative o Workflow ou clique em "Test workflow"
+# 6. Peça para o agente de IA: "Notifique a equipe sobre um erro crítico"
+```
+
+---
+
 ### Scripts disponíveis
 
 | Pasta | Comando | Descrição |
