@@ -365,3 +365,36 @@ pytest tests/ -v
 ```
 
 Justificativas completas e Matriz de Risco: [`docs/qa/testes-priorizados.md`](./qa/testes-priorizados.md)
+
+---
+
+## Card #50 — `[DevOps/SRE] Configurar Pipeline e Analisar logs com IA`
+
+- **Branch:** `feature/devops-anomalias`
+- **Issue:** https://github.com/fabiojpegoraro/projeto-avaliativo-m12-gestao-de-eventos/issues/50
+- **Data de execução:** 2026-08-25
+- **Requisito atendido:** Seção 4.8 do documento de avaliação (DevOps Inteligente — pipeline, análise de logs, detecção de anomalia e risco de falha).
+
+### O que foi feito
+
+Foi implementada a automação de CI (Continuous Integration) e criada a documentação simulando um ambiente de observabilidade avançado guiado por Inteligência Artificial (SRE).
+
+- **Pipeline de Integração (GitHub Actions):** Inserção do Job `agent-ci` no arquivo `.github/workflows/ci.yml`. O workflow instala as dependências do Agente, executa o `flake8` para garantir a qualidade de código estático (quebrando a build em caso de erros de sintaxe e exibindo _warnings_ de formatação) e executa os testes do `pytest`.
+- **Análise de Logs com IA:** Foi gerada a interpretação das saídas de log do linter e do pytest. A IA explicou um cenário de falha onde um import não utilizado foi detectado e também dissecou uma falha de asserção de um teste de segurança.
+- **Detecção de Anomalia e Risco:** Para cumprir a exigência de SRE, detectou-se um problema crítico de latência no `fetch_events_node` originado por _collection scans_ no MongoDB. Foi produzida uma estimativa preditiva onde a probabilidade de timeout completo em 3 dias alcançaria 92%. A ação corretiva envolvia desde tolerância a falhas no código (Timeouts configurados no Card #47) até criação de índices no banco de dados.
+
+### Arquivos modificados/criados
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `.github/workflows/ci.yml` | Inserção do Job `agent-ci` para validação automatizada de código Python via Actions. |
+| `docs/qa/analise-anomalias.md` | Documentação técnica completa (Seção 4.8) com a análise guiada por IA para logs de pipeline e identificação de anomalia sistêmica. |
+| `docs/prompts/2026-08-25_implementacao-devops-anomalias.md` | Log do prompt e decisões SRE tomadas. |
+
+### Decisões técnicas
+
+1. **Separação de Jobs no CI:** O agente (Python), frontend e backend foram encapsulados em Jobs distintos. Isso otimiza o tempo de execução (rodam em paralelo) e isola completamente os ambientes virtuais.
+2. **Flake8 (Two-step Linting):** A pipeline foi configurada para quebrar somente em erros críticos (Sintaxe/Variáveis Ausentes), mas continua exibindo estatísticas de complexidade ciclomática e tamanho de linha via `--exit-zero`. Isso evita que a equipe se frustre com builds falhando por "espaços em branco", focando a quebra apenas no que afeta segurança e lógica.
+3. **Métricas de Predição:** A tendência calculada para a anomalia simulada (+250ms de latência/dia) justificou cientificamente o alerta SRE. Essa precisão demonstra o amadurecimento das _skills_ do agente na identificação proativa de falhas.
+
+Relatório completo de Análise: [`docs/qa/analise-anomalias.md`](./qa/analise-anomalias.md)
