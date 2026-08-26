@@ -3,6 +3,8 @@ import re
 import uuid
 import json
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from typing import Annotated, TypedDict, Literal, Optional
@@ -21,7 +23,61 @@ load_dotenv()
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:3001/api")
 
 # ==============================================================================
-# SYSTEM PROMPT — Comportamento, restrições e defesas contra prompt injection
+# SESSÕES HTTP COM RETRY (Card #47 — Resiliência)
+# Duas sessions distintas para garantir segurança em operações de escrita
+# ==============================================================================
+_TIMEOUT = (5, 30)  # (connect_timeout, read_timeout) em segundos
+
+# Session para leitura (GET) — retry completo com backoff
+# Seguro para retry pois GET é idempotente
+_read_retry = Retry(
+    total=3,                          # Máximo de 3 tentativas
+    backoff_factor=0.5,               # Delays: 0s → 0.5s → 1.0s
+    status_forcelist=[500, 502, 503, 504],  # Retry em erros de servidor
+    allowed_methods=["GET"],
+    raise_on_status=False,
+)
+_read_session = requests.Session()
+_read_session.mount("http://", HTTPAdapter(max_retries=_read_retry))
+_read_session.mount("https://", HTTPAdapter(max_retries=_read_retry))
+
+# Session para escrita (POST/PATCH/DELETE) — retry apenas em falhas de conexão
+# NÃO retenta em status 5xx para evitar criação de registros duplicados
+_write_retry = Retry(
+    total=3,
+    backoff_factor=0.5,
+    status_forcelist=[],               # Sem retry em status codes (não-idempotente)
+    allowed_methods=["POST", "PUT", "PATCH", "DELETE"],
+    raise_on_status=False,
+)
+_write_session = requests.Session()
+_write_session.mount("http://", HTTPAdapter(max_retries=_write_retry))
+_write_session.mount("https://", HTTPAdapter(max_retries=_write_retry))
+
+
+def _format_request_error(e: Exception, operation: str) -> str:
+    """
+    Formata mensagens de erro HTTP de forma granular e informativa.
+    Distingue timeout, falha de conexão e erros HTTP para facilitar diagnóstico.
+    """
+    if isinstance(e, requests.exceptions.Timeout):
+        return (
+            f"⏱️  Timeout ao {operation}: o backend não respondeu dentro do prazo "
+            f"({_TIMEOUT[0]}s conexão / {_TIMEOUT[1]}s leitura). "
+            "Verifique se o servidor está em execução."
+        )
+    if isinstance(e, requests.exceptions.ConnectionError):
+        return (
+            f"🔌 Falha de conexão ao {operation}: não foi possível alcançar o backend em "
+            f"{API_BASE_URL}. Verifique se o servidor Node.js está rodando na porta correta."
+        )
+    if isinstance(e, requests.exceptions.HTTPError):
+        status = getattr(getattr(e, 'response', None), 'status_code', 'desconhecido')
+        return f"🚫 Erro HTTP {status} ao {operation}. Detalhes: {str(e)}"
+    return f"❌ Erro inesperado ao {operation}: {str(e)}"
+
+# ==============================================================================
+# SISTEMA PROMPT — Comportamento, restrições e defesas contra prompt injection
 # Card #46: Regras de segurança explícitas adicionadas para defesa adversarial
 # ==============================================================================
 SYSTEM_PROMPT = """Você é um assistente especializado em gestão de eventos.
@@ -126,14 +182,16 @@ def cadastrar_evento(
             "location": local,
             "category": categoria,
         }
-        response = requests.post(
-            f"{API_BASE_URL}/events", json=payload, timeout=(5, 30)
+        # Usa _write_session: retry em falhas de conexão, sem retry em status 5xx
+        # para evitar criação de eventos duplicados no backend
+        response = _write_session.post(
+            f"{API_BASE_URL}/events", json=payload, timeout=_TIMEOUT
         )
         response.raise_for_status()
         event = response.json()
         return f"Evento '{nome}' cadastrado com sucesso! ID: {event.get('_id', 'N/A')}"
     except requests.exceptions.RequestException as e:
-        return f"Erro ao cadastrar o evento na API: {str(e)}"
+        return _format_request_error(e, "cadastrar o evento")
 
 
 # ==============================================================================
@@ -233,14 +291,17 @@ def parallel_fetch_router(state: AgentState):
 
 
 def fetch_events_node(state: AgentState):
-    """NÓ PARALELO A — Busca eventos reais na API REST."""
+    """
+    NÓ PARALELO A — Busca eventos reais na API REST.
+    Usa _read_session com retry automático (3 tentativas, backoff 0.5s).
+    """
     try:
-        response = requests.get(f"{API_BASE_URL}/events", timeout=(5, 30))
+        response = _read_session.get(f"{API_BASE_URL}/events", timeout=_TIMEOUT)
         response.raise_for_status()
         events = response.json()
         result = "Nenhum evento encontrado." if not events else json.dumps(events, ensure_ascii=False, indent=2)
     except requests.exceptions.RequestException as e:
-        result = f"Erro ao acessar a API de eventos: {str(e)}"
+        result = _format_request_error(e, "consultar eventos")
     return {"parallel_events_data": result}
 
 

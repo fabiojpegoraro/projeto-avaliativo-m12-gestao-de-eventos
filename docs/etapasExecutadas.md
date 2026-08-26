@@ -230,3 +230,52 @@ python src/main.py
 ```
 
 Evidências completas: [`docs/qa/cenario-adversarial.md`](./qa/cenario-adversarial.md)
+
+---
+
+## Card #47 — `[Resiliência] Adicionar Timeout e Retry nas Tools`
+
+- **Branch:** `feature/resilencia-tools`
+- **Issue:** https://github.com/fabiojpegoraro/projeto-avaliativo-m12-gestao-de-eventos/issues/47
+- **Data de execução:** 2026-08-25
+- **Requisito atendido:** Seção 4.6 do documento de avaliação (Observabilidade e resiliência — tratamento de falhas com timeout e retry)
+
+### O que foi feito
+
+Adicionadas duas `requests.Session` com `HTTPAdapter` + `urllib3.Retry` para todas as chamadas HTTP do agente. O comportamento agora segue a estratégia de defesa em profundidade:
+
+- **GET (`_read_session`):** 3 retentativas com backoff de 0.5s; retry em status 500/502/503/504 (idempotente, seguro)
+- **POST (`_write_session`):** 3 retentativas apenas em falhas de conexão; sem retry em status codes para evitar criação de eventos duplicados (não-idempotente)
+- **`_format_request_error()`:** Tratamento granular distinguindo Timeout, ConnectionError, HTTPError e exceção genérica com mensagens diagnósticas claras
+
+### Arquivos modificados/criados
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `agent/src/main.py` | Imports `HTTPAdapter`/`Retry`; constante `_TIMEOUT`; `_read_session` e `_write_session` configuradas; `_format_request_error()` helper; `fetch_events_node` e `cadastrar_evento` atualizados |
+| `docs/technicalDocs/resiliencia-retry.md` | Documentação técnica da estratégia com diagrama de decisão e instruções de teste |
+| `docs/prompts/2026-08-25_implementacao-resilencia-retry.md` | Log do prompt e decisões técnicas |
+
+### Decisões técnicas
+
+1. **Duas sessions separadas (leitura vs escrita):** A decisão crítica é não fazer retry em POST com status 5xx — se o servidor retornou qualquer status, o request chegou e pode ter sido processado. Retry criaria eventos duplicados no MongoDB sem nenhuma garantia de idempotência na API.
+
+2. **`urllib3.Retry` via `HTTPAdapter`:** Solução nativa e battle-tested do ecossistema `requests`. Trata retry de forma transparente sem alterar o código de chamada — `_read_session.get(...)` retenta automaticamente.
+
+3. **`_TIMEOUT = (5, 30)`:** Separação entre connect timeout (5s) e read timeout (30s). Connect timeout cobre handshake TCP; read timeout é mais generoso para consultas MongoDB que podem ser lentas.
+
+4. **Mensagens granulares para o agente:** O LLM recebe mensagens diagnósticas (`Timeout`, `ConnectionError`, `HTTPError`) que permitem que ele informe o usuário com precisão — não apenas "erro genérico".
+
+### Como testar
+
+```bash
+# 1. Inicie o agente com o backend OFFLINE
+cd agent && source venv/bin/activate && python src/main.py
+
+# 2. Peça para consultar eventos — esperado:
+# 🔌 Falha de conexão ao consultar eventos: não foi possível alcançar o backend...
+
+# 3. Inicie o backend normalmente e consulte novamente — fluxo retorna ao normal ✅
+```
+
+Documentação técnica completa: [`docs/technicalDocs/resiliencia-retry.md`](./technicalDocs/resiliencia-retry.md)
