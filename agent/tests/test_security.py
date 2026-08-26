@@ -5,6 +5,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 # Ajusta o sys.path para importar o src
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from src.main import input_guard, route_after_guard, END, AgentState
 

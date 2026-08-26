@@ -4,6 +4,7 @@ from pathlib import Path
 from langchain_core.messages import AIMessage
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from src.main import should_continue, route_after_approval, AgentState, END
 
