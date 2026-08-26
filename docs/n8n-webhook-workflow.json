@@ -1,0 +1,85 @@
+{
+  "name": "Agente IA - Alertas e Notificações (Card #52)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "novo-evento",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook Notificacao Agente",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "agente-ia-notificacao-endpoint",
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "## 🚨 Nova Notificação do Agente IA\n\n**Nível:** {{$json.body.level}}\n**Mensagem:** {{$json.body.message}}\n**Origem:** {{$json.body.source}}",
+        "title": "Notificação Recebida"
+      },
+      "name": "Formatador de Mensagem",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        460,
+        300
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "channel": "projetos-alertas",
+        "text": "={{$json.body.message}}",
+        "attachments": [
+          {
+            "color": "={{$json.body.level === 'error' ? '#FF0000' : ($json.body.level === 'warning' ? '#FFA500' : '#00FF00')}}",
+            "fallback": "Alerta do Agente",
+            "title": "Aviso do Agente IA"
+          }
+        ],
+        "otherOptions": {}
+      },
+      "name": "Slack (Simulado)",
+      "type": "n8n-nodes-base.slack",
+      "position": [
+        700,
+        300
+      ],
+      "typeVersion": 1,
+      "notes": "Simula o envio para um canal do Slack. Substitua pelas credenciais reais se desejar."
+    }
+  ],
+  "connections": {
+    "Webhook Notificacao Agente": {
+      "main": [
+        [
+          {
+            "node": "Formatador de Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatador de Mensagem": {
+      "main": [
+        [
+          {
+            "node": "Slack (Simulado)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "pinData": {},
+  "versionId": "f7d39c09-eb01-4f1b-b461-1c7b8e5c3e62",
+  "triggerCount": 1,
+  "tags": []
+}

@@ -20,7 +20,7 @@ from langchain_core.tools import tool
 load_dotenv()
 
 # Obtém a URL base da API (com fallback para o padrão local)
-from src.utils import API_BASE_URL, _read_session, _TIMEOUT, _format_request_error
+from utils import API_BASE_URL, _read_session, _TIMEOUT, _format_request_error
 
 # ==============================================================================
 # CONFIGURAÇÃO DE OBSERVABILIDADE — LOGS ESTRUTURADOS E TRACES (Card #48)
@@ -146,11 +146,11 @@ class AgentState(TypedDict):
 # ==============================================================================
 # CONFIGURAÇÃO DO LLM E TOOLS
 # ==============================================================================
-from src.tools import cadastrar_evento, consultar_eventos
+from tools import cadastrar_evento, consultar_eventos, notificar_equipe
 
 llm = ChatGoogleGenerativeAI(model=os.getenv("LLM_MODEL", "gemini-2.5-flash"), temperature=0)
 
-tools = [consultar_eventos, cadastrar_evento]
+tools = [consultar_eventos, cadastrar_evento, notificar_equipe]
 llm_with_tools = llm.bind_tools(tools)
 
 # ==============================================================================

@@ -433,3 +433,31 @@ O Agente IA atuou como revisor de código para analisar o orquestrador principal
 
 Documentação completa do Review: [`docs/qa/code-review.md`](./qa/code-review.md)
 
+---
+
+## Card #52 — `[Low-Code] Criar integração Low-Code para Notificação (n8n)`
+
+- **Branch:** `feature/low-code`
+- **Issue:** https://github.com/fabiojpegoraro/projeto-avaliativo-m12-gestao-de-eventos/issues/52
+- **Data de execução:** 2026-08-25
+- **Requisito atendido:** Integração com Plataforma Low-Code (n8n).
+
+### O que foi feito
+
+Foi implementada a integração entre o Agente IA (LangGraph) e a plataforma n8n (via Docker) utilizando a arquitetura orientada a eventos (Webhooks). 
+
+- **Workflow n8n:** Criado e exportado o fluxo JSON (`docs/n8n-webhook-workflow.json`), que expõe uma URL de entrada (`/webhook/novo-evento`), formata o _payload_ e simula uma notificação para um canal Slack. 
+- **Tool `notificar_equipe`:** O Agente de IA ganhou autonomia para disparar alertas quando julgar necessário, utilizando a nova ferramenta exposta. Isso permite o encadeamento de "Raciocínio (ReAct) → Disparo Low-Code".
+- **Instruções Adicionadas:** O arquivo `README.md` foi atualizado com comandos Docker para rodar o n8n e como importar o gatilho sem esforço.
+- **Merge de Correções:** A branch absorveu as alterações não commitadas pelo autor relativas às correções de imports do Python (`from src.utils` corrigido para `from utils` no contexto do `main.py` rodando dentro da raiz `agent/src`).
+
+### Arquivos modificados/criados
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `docs/n8n-webhook-workflow.json` | Export do pipeline de integração construído no n8n. |
+| `agent/src/tools.py` | Implementação da `@tool def notificar_equipe(...)` conectada ao n8n. Refatoração do path de import de `utils`. |
+| `agent/src/main.py` | Bind da nova ferramenta (`notificar_equipe`) ao LLM e correção do path de import de `utils`. |
+| `README.md` | Instruções na seção "4. Integração n8n". |
+| `docs/prompts/2026-08-25_implementacao-low-code.md` | Log do prompt e decisões técnicas tomadas. |
+
