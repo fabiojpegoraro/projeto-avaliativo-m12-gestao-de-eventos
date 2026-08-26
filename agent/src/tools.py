@@ -68,7 +68,8 @@ def notificar_equipe(
     Integração Low-Code (Card #52): Envia uma notificação para a equipe via n8n.
     Útil para alertar sobre eventos importantes, falhas ou ações suspeitas.
     """
-    n8n_webhook_url = os.getenv("N8N_WEBHOOK_URL", "http://localhost:5678/webhook/novo-evento")
+    # Usa webhook-test por padrão para facilitar a visualização no n8n durante os testes
+    n8n_webhook_url = os.getenv("N8N_WEBHOOK_URL", "http://localhost:5678/webhook-test/novo-evento")
     try:
         payload = {
             "message": mensagem,

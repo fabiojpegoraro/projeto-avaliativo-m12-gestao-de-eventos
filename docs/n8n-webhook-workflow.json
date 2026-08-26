@@ -3,8 +3,9 @@
   "nodes": [
     {
       "parameters": {
+        "httpMethod": "POST",
         "path": "novo-evento",
-        "responseMode": "lastNode",
+        "responseMode": "onReceived",
         "options": {}
       },
       "name": "Webhook Notificacao Agente",
@@ -49,6 +50,7 @@
         300
       ],
       "typeVersion": 1,
+      "continueOnFail": true,
       "notes": "Simula o envio para um canal do Slack. Substitua pelas credenciais reais se desejar."
     }
   ],
