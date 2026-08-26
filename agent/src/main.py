@@ -5,8 +5,6 @@ import json
 import time
 import logging
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from typing import Annotated, TypedDict, Literal, Optional
@@ -22,7 +20,7 @@ from langchain_core.tools import tool
 load_dotenv()
 
 # Obtém a URL base da API (com fallback para o padrão local)
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:3001/api")
+from src.utils import API_BASE_URL, _read_session, _TIMEOUT, _format_request_error
 
 # ==============================================================================
 # CONFIGURAÇÃO DE OBSERVABILIDADE — LOGS ESTRUTURADOS E TRACES (Card #48)
@@ -70,60 +68,8 @@ def _log_trace(state: dict, action: str, latency: Optional[int] = None, level: i
     logger.log(level, action, extra=extra)
 
 # ==============================================================================
-# SESSÕES HTTP COM RETRY (Card #47 — Resiliência)
-# Duas sessions distintas para garantir segurança em operações de escrita
-# ==============================================================================
-_TIMEOUT = (5, 30)  # (connect_timeout, read_timeout) em segundos
-
-# Session para leitura (GET) — retry completo com backoff
-# Seguro para retry pois GET é idempotente
-_read_retry = Retry(
-    total=3,                          # Máximo de 3 tentativas
-    backoff_factor=0.5,               # Delays: 0s → 0.5s → 1.0s
-    status_forcelist=[500, 502, 503, 504],  # Retry em erros de servidor
-    allowed_methods=["GET"],
-    raise_on_status=False,
-)
-_read_session = requests.Session()
-_read_session.mount("http://", HTTPAdapter(max_retries=_read_retry))
-_read_session.mount("https://", HTTPAdapter(max_retries=_read_retry))
-
-# Session para escrita (POST/PATCH/DELETE) — retry apenas em falhas de conexão
-# NÃO retenta em status 5xx para evitar criação de registros duplicados
-_write_retry = Retry(
-    total=3,
-    backoff_factor=0.5,
-    status_forcelist=[],               # Sem retry em status codes (não-idempotente)
-    allowed_methods=["POST", "PUT", "PATCH", "DELETE"],
-    raise_on_status=False,
-)
-_write_session = requests.Session()
-_write_session.mount("http://", HTTPAdapter(max_retries=_write_retry))
-_write_session.mount("https://", HTTPAdapter(max_retries=_write_retry))
-
-
-def _format_request_error(e: Exception, operation: str) -> str:
-    """
-    Formata mensagens de erro HTTP de forma granular e informativa.
-    Distingue timeout, falha de conexão e erros HTTP para facilitar diagnóstico.
-    """
-    if isinstance(e, requests.exceptions.Timeout):
-        return (
-            f"⏱️  Timeout ao {operation}: o backend não respondeu dentro do prazo "
-            f"({_TIMEOUT[0]}s conexão / {_TIMEOUT[1]}s leitura). "
-            "Verifique se o servidor está em execução."
-        )
-    if isinstance(e, requests.exceptions.ConnectionError):
-        return (
-            f"🔌 Falha de conexão ao {operation}: não foi possível alcançar o backend em "
-            f"{API_BASE_URL}. Verifique se o servidor Node.js está rodando na porta correta."
-        )
-    if isinstance(e, requests.exceptions.HTTPError):
-        status = getattr(getattr(e, 'response', None), 'status_code', 'desconhecido')
-        return f"🚫 Erro HTTP {status} ao {operation}. Detalhes: {str(e)}"
-    return f"❌ Erro inesperado ao {operation}: {str(e)}"
-
-# ==============================================================================
+# PROMPT DO SISTEMA
+# ============================================================================================================================
 # SISTEMA PROMPT — Comportamento, restrições e defesas contra prompt injection
 # Card #46: Regras de segurança explícitas adicionadas para defesa adversarial
 # ==============================================================================
@@ -198,56 +144,10 @@ class AgentState(TypedDict):
 
 
 # ==============================================================================
-# TOOLS
+# CONFIGURAÇÃO DO LLM E TOOLS
 # ==============================================================================
+from src.tools import cadastrar_evento, consultar_eventos
 
-@tool
-def consultar_eventos() -> str:
-    """
-    Consulta a API para obter a lista de eventos disponíveis.
-    Retorna os eventos em formato JSON como string.
-    Esta tool é interceptada pelo roteador para execução paralela (Card #44).
-    """
-    pass
-
-
-@tool
-def cadastrar_evento(
-    nome: str,
-    descricao: str,
-    data_hora: str,
-    local: str,
-    categoria: Literal["Conferência", "Workshop", "Webinar", "Networking", "Outro"],
-) -> str:
-    """
-    Cadastra um novo evento na API.
-    A data_hora deve ser fornecida em formato válido, como '2026-12-01T14:00:00Z'.
-    Esta tool requer APROVAÇÃO HUMANA antes de ser executada (Card #45).
-    Retorna uma mensagem de sucesso com o ID do evento criado ou uma mensagem de erro.
-    """
-    try:
-        payload = {
-            "name": nome,
-            "description": descricao,
-            "dateTime": data_hora,
-            "location": local,
-            "category": categoria,
-        }
-        # Usa _write_session: retry em falhas de conexão, sem retry em status 5xx
-        # para evitar criação de eventos duplicados no backend
-        response = _write_session.post(
-            f"{API_BASE_URL}/events", json=payload, timeout=_TIMEOUT
-        )
-        response.raise_for_status()
-        event = response.json()
-        return f"Evento '{nome}' cadastrado com sucesso! ID: {event.get('_id', 'N/A')}"
-    except requests.exceptions.RequestException as e:
-        return _format_request_error(e, "cadastrar o evento")
-
-
-# ==============================================================================
-# CONFIGURAÇÃO DO LLM
-# ==============================================================================
 llm = ChatGoogleGenerativeAI(model=os.getenv("LLM_MODEL", "gemini-2.5-flash"), temperature=0)
 
 tools = [consultar_eventos, cadastrar_evento]
