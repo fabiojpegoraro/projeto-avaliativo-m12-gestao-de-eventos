@@ -279,3 +279,47 @@ cd agent && source venv/bin/activate && python src/main.py
 ```
 
 Documentação técnica completa: [`docs/technicalDocs/resiliencia-retry.md`](./technicalDocs/resiliencia-retry.md)
+
+---
+
+## Card #48 — `[Observabilidade] Configurar Logs Estruturados e Traces`
+
+- **Branch:** `feature/observabilidade`
+- **Issue:** https://github.com/fabiojpegoraro/projeto-avaliativo-m12-gestao-de-eventos/issues/48
+- **Data de execução:** 2026-08-25
+- **Requisito atendido:** Seção 4.6 do documento de avaliação (Observabilidade — produzir e correlacionar dois sinais: logs estruturados e traces/latência)
+
+### O que foi feito
+
+Foi implementada uma estratégia de observabilidade que emite logs estruturados em formato JSON e injeta sinais de correlação (Traces) nas requisições.
+
+- **Logs Estruturados (JSON):** Configuração do módulo `logging` nativo do Python usando um formatador customizado (`JsonFormatter`) que envia as saídas para `agent/logs/agent.log`.
+- **Trace ID e Correlação:** Cada novo turno/interação do usuário recebe um `trace_id` (UUID), que, juntamente com o `session_id`, é passado no estado (`AgentState`) e injetado em cada entrada de log para correlacionar o ciclo de vida daquela interação.
+- **Instrumentação de Latência:** Nos nós críticos (`agent`, `fetch_events_node`, `input_guard` e na execução de tools), calcula-se o tempo decorrido usando `time.time()` e injeta-se o campo `latency_ms` no log, gerando um trace com métricas de tempo.
+
+### Arquivos modificados/criados
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `agent/src/main.py` | Importação e configuração do `logging` e `JsonFormatter`; inserção do `trace_id` no `AgentState`; adição da função auxiliar `_log_trace()`; instrumentação de tempo em `run_llm`, `fetch_events_node`, `input_guard` e nodes de tool. |
+| `docs/technicalDocs/observabilidade-analise.md` | Documento que mostra a investigação da execução (análise de log) de cenários de sucesso (fluxo principal) e erro, atendendo à exigência de "investigar pelo menos uma execução". |
+| `docs/prompts/2026-08-25_implementacao-observabilidade.md` | Log do prompt e decisões da tarefa. |
+
+### Decisões técnicas
+
+1. **JsonFormatter:** Preferiu-se manter a stack leve (sem dependências pesadas externas como `structlog` ou `loguru`), mas estendendo `logging.Formatter` para serializar o `LogRecord` nativo em um JSON enriquecido.
+2. **Separação de Logs do Terminal:** O console interativo não exibe o JSON cru (`logger.propagate = False`). O terminal continua limpo para o usuário via os prints do stream LangGraph (`_print_stream_updates`), enquanto a camada de observabilidade escreve em arquivo.
+3. **Trace Inception:** O `trace_id` nasce na entrada CLI do LangGraph no início do turno, assim todo o grafo LangGraph correlaciona aquela execução específica, o que permite o tracing completo da decisão.
+
+### Como testar
+
+```bash
+cd agent
+source venv/bin/activate
+python src/main.py
+
+# Interaja com o agente. Depois, em outro terminal, observe os logs estruturados:
+tail -f logs/agent.log | jq '{level, message, latency_ms, trace_id, session_id}'
+```
+
+Análise da Execução (Traces): [`docs/technicalDocs/observabilidade-analise.md`](./technicalDocs/observabilidade-analise.md)

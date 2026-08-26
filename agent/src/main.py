@@ -2,6 +2,8 @@ import os
 import re
 import uuid
 import json
+import time
+import logging
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -21,6 +23,51 @@ load_dotenv()
 
 # Obtém a URL base da API (com fallback para o padrão local)
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:3001/api")
+
+# ==============================================================================
+# CONFIGURAÇÃO DE OBSERVABILIDADE — LOGS ESTRUTURADOS E TRACES (Card #48)
+# ==============================================================================
+os.makedirs("logs", exist_ok=True)
+
+class JsonFormatter(logging.Formatter):
+    """Formatador de log estruturado (JSON) para ingestão e análise (Observabilidade)."""
+    def format(self, record):
+        log_record = {
+            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "module": record.module,
+            "funcName": record.funcName
+        }
+        if hasattr(record, "trace_id"):
+            log_record["trace_id"] = record.trace_id
+        if hasattr(record, "session_id"):
+            log_record["session_id"] = record.session_id
+        if hasattr(record, "latency_ms"):
+            log_record["latency_ms"] = record.latency_ms
+        if hasattr(record, "event_details"):
+            log_record["event_details"] = record.event_details
+        return json.dumps(log_record, ensure_ascii=False)
+
+logger = logging.getLogger("event_agent")
+logger.setLevel(logging.INFO)
+# Evita logs duplicados no terminal (StreamHandler) já que usamos _print_stream_updates
+logger.propagate = False
+fh = logging.FileHandler("logs/agent.log", encoding="utf-8")
+fh.setFormatter(JsonFormatter())
+logger.addHandler(fh)
+
+def _log_trace(state: dict, action: str, latency: Optional[int] = None, level: int = logging.INFO, **kwargs):
+    """Helper para emitir logs estruturados correlacionados com trace_id e session_id."""
+    extra = {
+        "trace_id": state.get("trace_id", "unknown"),
+        "session_id": state.get("session_id", "unknown"),
+    }
+    if latency is not None:
+        extra["latency_ms"] = latency
+    for k, v in kwargs.items():
+        extra[k] = v
+    logger.log(level, action, extra=extra)
 
 # ==============================================================================
 # SESSÕES HTTP COM RETRY (Card #47 — Resiliência)
@@ -145,6 +192,10 @@ class AgentState(TypedDict):
     pending_approval_tool_call: Optional[dict] # Tool call completo aguardando aprovação
     # Campo de segurança adversarial (Card #46)
     injection_blocked: Optional[bool]          # True se input_guard detectou injeção
+    # Campos de Observabilidade (Card #48)
+    trace_id: Optional[str]                    # Identificador único da requisição/turno atual
+    session_id: Optional[str]                  # Identificador da sessão (thread_id)
+
 
 # ==============================================================================
 # TOOLS
@@ -208,7 +259,11 @@ llm_with_tools = llm.bind_tools(tools)
 
 def run_llm(state: AgentState):
     """Executa o modelo para processar a conversa e decidir os próximos passos."""
+    start_time = time.time()
+    _log_trace(state, "Iniciando chamada ao LLM (run_llm)")
     response = llm_with_tools.invoke(state["messages"])
+    latency = int((time.time() - start_time) * 1000)
+    _log_trace(state, "LLM respondeu", latency=latency)
     return {"messages": [response]}
 
 
@@ -232,12 +287,12 @@ def input_guard(state: AgentState):
     """
     NÓ DE SEGURANÇA (Card #46) — Primeira linha de defesa contra prompt injection.
     Analisa a última mensagem do usuário antes de chegar ao LLM.
-    Se detectar padrão de injeção, bloqueia a execução e injeta uma mensagem
-    de rejeição sem expor o input malicioso ao modelo.
     """
+    start_time = time.time()
+    _log_trace(state, "Verificando input (input_guard)")
     last_message = state["messages"][-1]
 
-    # Extrai o texto da mensagem (suporta conteúdo em string ou lista de blocos)
+    # Extrai o texto da mensagem
     if isinstance(last_message.content, list):
         user_text = " ".join(
             p.get("text", "") for p in last_message.content if isinstance(p, dict)
@@ -246,6 +301,8 @@ def input_guard(state: AgentState):
         user_text = str(last_message.content)
 
     if _detect_injection(user_text):
+        latency = int((time.time() - start_time) * 1000)
+        _log_trace(state, "Padrão de injeção detectado, bloqueando", latency=latency, level=logging.WARNING, event_details={"input": user_text})
         print("  🛡️  [Guarda de Segurança] Padrão de injeção detectado — entrada bloqueada.")
         rejection_msg = AIMessage(
             content=(
@@ -259,6 +316,8 @@ def input_guard(state: AgentState):
             "injection_blocked": True,
         }
 
+    latency = int((time.time() - start_time) * 1000)
+    _log_trace(state, "Input validado e seguro", latency=latency)
     return {"injection_blocked": False}
 
 
@@ -295,12 +354,18 @@ def fetch_events_node(state: AgentState):
     NÓ PARALELO A — Busca eventos reais na API REST.
     Usa _read_session com retry automático (3 tentativas, backoff 0.5s).
     """
+    start_time = time.time()
+    _log_trace(state, "Iniciando busca de eventos (fetch_events_node)")
     try:
         response = _read_session.get(f"{API_BASE_URL}/events", timeout=_TIMEOUT)
         response.raise_for_status()
         events = response.json()
         result = "Nenhum evento encontrado." if not events else json.dumps(events, ensure_ascii=False, indent=2)
+        latency = int((time.time() - start_time) * 1000)
+        _log_trace(state, "Busca de eventos concluída com sucesso", latency=latency, event_details={"count": len(events)})
     except requests.exceptions.RequestException as e:
+        latency = int((time.time() - start_time) * 1000)
+        _log_trace(state, "Erro ao buscar eventos", latency=latency, level=logging.ERROR, event_details={"error": str(e)})
         result = _format_request_error(e, "consultar eventos")
     return {"parallel_events_data": result}
 
@@ -381,6 +446,7 @@ def route_after_approval(state: AgentState):
 
 def execute_approved_tool(state: AgentState):
     """Executa cadastrar_evento após aprovação humana confirmada."""
+    start_time = time.time()
     tool_call = state.get("pending_approval_tool_call")
     if not tool_call:
         return {
@@ -388,8 +454,12 @@ def execute_approved_tool(state: AgentState):
             "human_approval_response": None,
         }
 
+    _log_trace(state, f"Executando tool aprovada: {tool_call['name']}", event_details={"args": tool_call["args"]})
     tool_map = {t.name: t for t in tools}
     result = tool_map["cadastrar_evento"].invoke(tool_call["args"])
+
+    latency = int((time.time() - start_time) * 1000)
+    _log_trace(state, f"Tool {tool_call['name']} finalizada", latency=latency)
 
     return {
         "messages": [
@@ -431,7 +501,11 @@ def direct_tools(state: AgentState):
     for tool_call in last_message.tool_calls:
         tool_name = tool_call["name"]
         if tool_name in tool_map and tool_name not in ("consultar_eventos", "cadastrar_evento"):
+            start_time = time.time()
+            _log_trace(state, f"Executando tool direta: {tool_name}", event_details={"args": tool_call["args"]})
             result = tool_map[tool_name].invoke(tool_call["args"])
+            latency = int((time.time() - start_time) * 1000)
+            _log_trace(state, f"Tool {tool_name} finalizada", latency=latency)
             tool_responses.append(
                 ToolMessage(
                     content=str(result),
@@ -636,6 +710,7 @@ if __name__ == "__main__":
     print("⚡ Paralelização ativa — consultas de eventos buscam dados em paralelo.")
     print("🔐 Governança ativa — cadastros requerem aprovação humana antes de executar.")
     print("🛡️  Segurança ativa — entradas maliciosas são detectadas e bloqueadas.")
+    print("📊 Observabilidade ativa — traces e logs estruturados gravados em logs/agent.log.")
     print("Digite 'sair' ou 'exit' para encerrar.")
     print("-" * 60)
 
@@ -662,6 +737,9 @@ if __name__ == "__main__":
             if not user_input.strip():
                 continue
 
+            # Novo trace_id para cada turno/interação (Card #48)
+            current_trace_id = str(uuid.uuid4())
+
             if first_turn:
                 # Na primeira mensagem, inclui o SystemMessage junto com a HumanMessage
                 # para que a API do Gemini receba sempre ao menos uma mensagem de usuário
@@ -675,15 +753,24 @@ if __name__ == "__main__":
                     "pending_tool_call_id": None,
                     "human_approval_response": None,
                     "pending_approval_tool_call": None,
+                    "trace_id": current_trace_id,
+                    "session_id": session_id,
                 }
                 first_turn = False
             else:
-                payload = {"messages": [HumanMessage(content=user_input)]}
+                payload = {
+                    "messages": [HumanMessage(content=user_input)],
+                    "trace_id": current_trace_id,
+                    "session_id": session_id,
+                }
+
+            _log_trace(payload, "Iniciando turno do usuário", event_details={"input_length": len(user_input)})
 
             stream_with_interrupt_handling(
                 payload,
                 config,
             )
+            _log_trace(payload, "Turno do usuário finalizado")
 
         except KeyboardInterrupt:
             print("\nEncerrando agente...")
