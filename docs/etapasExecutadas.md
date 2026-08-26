@@ -398,3 +398,38 @@ Foi implementada a automação de CI (Continuous Integration) e criada a documen
 3. **Métricas de Predição:** A tendência calculada para a anomalia simulada (+250ms de latência/dia) justificou cientificamente o alerta SRE. Essa precisão demonstra o amadurecimento das _skills_ do agente na identificação proativa de falhas.
 
 Relatório completo de Análise: [`docs/qa/analise-anomalias.md`](./qa/analise-anomalias.md)
+
+---
+
+## Card #51 — `[QA Code Review] Realizar e Documentar Code Review com IA`
+
+- **Branch:** `feature/qa-code-review`
+- **Issue:** https://github.com/fabiojpegoraro/projeto-avaliativo-m12-gestao-de-eventos/issues/51
+- **Data de execução:** 2026-08-25
+- **Requisito atendido:** Seção 4.7 do documento de avaliação (QA e Testes Inteligentes — IA para revisar projeto, identificar problemas e sugerir melhorias).
+
+### O que foi feito
+
+O Agente IA atuou como revisor de código para analisar o orquestrador principal do projeto (`agent/src/main.py`), identificando problemas arquiteturais (fere o Princípio da Responsabilidade Única - SRP) e gargalos apontados pelo linter. A refatoração proposta e implementada pela IA extraiu componentes essenciais, melhorando o Clean Code.
+
+- **`agent/src/utils.py` criado:** Todo o _boilerplate_ de infraestrutura HTTP (Sessões com Retry e funções de formatação de erros) foi extraído para este módulo utilitário.
+- **`agent/src/tools.py` criado:** As funções declaradas como `@tool` (que executam leitura/escrita na API) foram removidas da orquestração principal e agora vivem em um módulo limpo e escalável.
+- **`agent/src/main.py` refatorado:** O arquivo perdeu cerca de 100 linhas de lógicas externas, sendo polido para funcionar estritamente como a definição do `StateGraph` e o console CLI, importando dependências através dos novos módulos criados.
+
+### Arquivos modificados/criados
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `agent/src/main.py` | Refatorado para importar ferramentas e utilitários; lógica acoplada removida. |
+| `agent/src/tools.py` | Criado para armazenar as tools do agente (`cadastrar_evento`, `consultar_eventos`). |
+| `agent/src/utils.py` | Criado para armazenar constantes de rede e a configuração do adapter HTTP com `urllib3.Retry`. |
+| `docs/qa/code-review.md` | Artefato oficial exigido (Seção 4.7) relatando os findings, o plano de ação e as evidências (diff). |
+| `docs/prompts/2026-08-25_implementacao-qa-code-review.md` | Log do prompt. |
+
+### Decisões técnicas
+
+1. **Combate à Entropia:** A refatoração foi crucial. Projetos baseados em LangGraph tendem a acumular muito estado e nós auxiliares no script principal. O Code Review cortou esse mal pela raiz ao separar infraestrutura de domínio.
+2. **Injeção vs Import:** Para manter compatibilidade com o fluxo e com os testes rodando, optou-se pela exportação simples dos módulos (`from src.utils import _read_session`), garantindo que o agente continue com seu _singleton_ de Retry, mas em arquivos muito mais fáceis de ler e dar manutenção.
+
+Documentação completa do Review: [`docs/qa/code-review.md`](./qa/code-review.md)
+
