@@ -323,3 +323,45 @@ tail -f logs/agent.log | jq '{level, message, latency_ms, trace_id, session_id}'
 ```
 
 Análise da Execução (Traces): [`docs/technicalDocs/observabilidade-analise.md`](./technicalDocs/observabilidade-analise.md)
+
+---
+
+## Card #49 — `[QA Testes] Gerar e Refinar Testes Automatizados com IA`
+
+- **Branch:** `feature/qa-testes`
+- **Issue:** https://github.com/fabiojpegoraro/projeto-avaliativo-m12-gestao-de-eventos/issues/49
+- **Data de execução:** 2026-08-25
+- **Requisito atendido:** Seção 4.7 do documento de avaliação (IA para QA — gerar testes de integração, selecionar/justificar prioritários com base em risco).
+
+### O que foi feito
+
+Foi implementada uma suíte de testes de **Integração de Componentes** para o fluxo do LangGraph, focando nas áreas de maior risco da aplicação (Segurança e Roteamento Crítico), sem depender da disponibilidade de APIs externas (Gemini ou backend Node.js). O framework escolhido foi o `pytest`.
+
+- **Cenário Prioritário 1 (Segurança / Anti-Injection):** Testes exaustivos sobre o nó `input_guard` que garante o bloqueio imediato caso receba entradas maliciosas (bypass, "aja como", etc).
+- **Cenário Prioritário 2 (Confiabilidade / HITL):** Testes de integração do roteamento de estado (`should_continue` e `route_after_approval`) garantindo que as ferramentas destrutivas jamais são chamadas diretamente e que a recusa humana sempre aborta a transação.
+
+### Arquivos modificados/criados
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `agent/requirements.txt` | Adição da dependência `pytest`. |
+| `agent/tests/test_security.py` | Implementação de 3 testes para o nó de segurança (`input_guard` e `route_after_guard`). |
+| `agent/tests/test_routing.py` | Implementação de 2 testes parametrizados para os roteadores `should_continue` e `route_after_approval`. |
+| `docs/qa/testes-priorizados.md` | Documentação exigida (Seção 4.7) detalhando a estratégia e justificando a matriz de risco utilizada. |
+| `docs/prompts/2026-08-25_implementacao-qa-testes.md` | Log do prompt. |
+
+### Decisões técnicas
+
+1. **Testar os "Nós" isoladamente vs Grafo inteiro:** Ao invés de invocar a CLI completa que depende de chaves de API (Gemini), a IA auxiliou a abstrair os testes injetando instâncias _mockadas_ do `AgentState` diretamente nas funções dos nós e arestas condicionais. Isso foca no comportamento de orquestração do LangGraph.
+2. **Priorização por Risco:** O roteamento de estado e a camada de segurança foram os componentes escolhidos por apresentarem os maiores impactos em caso de falha (possibilidade de cadastro não autorizado de eventos ou vazamento/modificação indevida do sistema).
+
+### Como testar
+
+```bash
+cd agent
+source venv/bin/activate
+pip install -r requirements.txt
+pytest tests/ -v
+```
+
+Justificativas completas e Matriz de Risco: [`docs/qa/testes-priorizados.md`](./qa/testes-priorizados.md)
