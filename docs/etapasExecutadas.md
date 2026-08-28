@@ -479,3 +479,27 @@ Foi elaborado um documento técnico relatando o processo de construção e evolu
 ### Decisões técnicas
 
 1. **Foco em Segurança:** Optou-se por documentar o aspecto de restrição de domínio (o agente recusar perguntas fora do tema de Eventos ou tentativas de modo DAN) por ser a tarefa mais complexa que um LLM enfrenta em sistemas de atendimento corporativo, demonstrando maturidade na Engenharia de Prompt.
+
+---
+
+## Card #54 — `[Documentação] Atualizar README.md completo`
+
+- **Branch:** `docs/readme-completo`
+- **Issue:** https://github.com/fabiojpegoraro/projeto-avaliativo-m12-gestao-de-eventos/issues/54
+- **Data de execução:** 2026-08-27
+- **Requisito atendido:** Fechamento das Entregas do Módulo 12 (Organização e Consolidação).
+
+### O que foi feito
+
+O arquivo principal de documentação (`README.md`) foi atualizado para atuar como o ponto central das entregas do trabalho. 
+
+- Foi adicionada a seção **📚 Documentação (Entregas do Módulo 12)**.
+- Essa seção compila os links diretos para todos os artefatos técnicos gerados ao longo dos *sprints* (QA Inteligente, SRE Analítico, Refinamento de Prompt, Integração n8n, e o próprio registro no Kanban).
+- As seções legadas (sobre execução de Backend, Frontend, e Arquitetura do Sistema) foram rigorosamente mantidas.
+
+### Arquivos modificados/criados
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `README.md` | Inserção da seção "Documentação (Entregas do Módulo 12)" interligando os demais artefatos. |
+| `docs/etapasExecutadas.md` | Registro de encerramento do último Card. |
