@@ -202,6 +202,18 @@ docker run -it --rm \
 | `frontend` | `npm run lint` | Verifica o código com ESLint |
 | `agent` | `python src/main.py` | Executa o agente de IA no terminal |
 
+## 📚 Documentação (Entregas do Módulo 12)
+
+Durante o desenvolvimento do Agente de IA, diversos artefatos exigidos pela avaliação foram gerados para garantir a qualidade, segurança e observabilidade do sistema. Você pode conferir os relatórios detalhados nos links abaixo:
+
+- **[Histórico e Registro de Atividades (Kanban)](docs/etapasExecutadas.md):** Detalhamento de todas as etapas, branches e tomadas de decisão realizadas ao longo do projeto.
+- **[Engenharia de Prompt Aplicada](docs/refinamento-prompt.md):** Demonstração do ciclo iterativo de refinamento do *System Prompt* para blindar o modelo contra ataques (Prompt Injection/DAN).
+- **[QA e Testes Inteligentes (Code Review)](docs/qa/code-review.md):** Relatório da revisão de código automatizada pelo Agente, que resultou no isolamento de ferramentas e infraestrutura HTTP em módulos independentes (`utils.py` e `tools.py`).
+- **[Observabilidade Avançada e SRE](docs/qa/analise-anomalias.md):** Análise preditiva conduzida pela IA em cima dos logs de execução (CI/CD), identificando gargalos e prevendo timeouts.
+- **[Integração Low-Code (n8n)](#4-integração-n8n-opcional---notificações):** Fluxo JSON exportado em `docs/n8n-webhook-workflow.json` contendo o gatilho orientado a eventos do Agente.
+
+*(Para detalhes minuciosos sobre os *prompts* utilizados na interação com a IA durante o ciclo de desenvolvimento, acesse a pasta [`docs/prompts/`](docs/prompts/)).*
+
 ## 📌 Arquitetura do Sistema
 
 O projeto adota uma arquitetura dividida em duas camadas principais (Frontend SPA e Backend API RESTful), utilizando comunicação assíncrona via protocolo HTTP e persistência em banco de dados NoSQL. O sistema possui acesso aberto, sem controle de autenticação.
