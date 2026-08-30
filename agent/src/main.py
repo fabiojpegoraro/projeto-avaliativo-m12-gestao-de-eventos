@@ -148,7 +148,7 @@ class AgentState(TypedDict):
 # ==============================================================================
 from tools import cadastrar_evento, consultar_eventos, notificar_equipe
 
-llm = ChatGoogleGenerativeAI(model=os.getenv("LLM_MODEL", "gemini-2.5-flash"), temperature=0)
+llm = ChatGoogleGenerativeAI(model=os.getenv("LLM_MODEL", "gemini-3.6-flash"), temperature=0)
 
 tools = [consultar_eventos, cadastrar_evento, notificar_equipe]
 llm_with_tools = llm.bind_tools(tools)
