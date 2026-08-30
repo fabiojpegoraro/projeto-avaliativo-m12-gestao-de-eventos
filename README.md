@@ -4,7 +4,7 @@
 O **Sistema de Gestão de Eventos** é uma aplicação web completa desenvolvida para gerenciar e visualizar eventos acadêmicos. O sistema possui acesso aberto (sem controle de usuários ou login), permitindo cadastrar, editar, excluir e visualizar os eventos livremente. A plataforma conta com uma interface intuitiva, listando os eventos separados por "Futuros" e "Passados", e oferece recursos de busca textual e ordenação, facilitando a usabilidade.
 
 ## Apresentação no Youtube
-https://youtu.be/Ry7Zq1XsK3I
+https://youtu.be/trIuq_4kM6E
 
 ## Stack Tecnológica
 
@@ -167,6 +167,27 @@ python src/main.py
 
 ---
 
+### 4. Integração n8n (Opcional - Notificações)
+
+O agente possui uma ferramenta nativa (`notificar_equipe`) capaz de disparar alertas (Webhooks) para um servidor n8n. Para testar o fluxo de automação Low-Code (Card #52):
+
+```bash
+# 1. Inicie o n8n localmente via Docker (porta 5678)
+docker run -it --rm \
+  --name n8n \
+  -p 5678:5678 \
+  -e N8N_SECURE_COOKIE=false \
+  n8nio/n8n:1.121.0
+
+# 2. Acesse http://localhost:5678 e pule as configurações iniciais
+# 3. No menu lateral, clique em "Workflows" > "Import from File"
+# 4. Selecione o arquivo docs/n8n-webhook-workflow.json deste repositório
+# 5. Ative o Workflow ou clique em "Test workflow"
+# 6. Peça para o agente de IA: "Notifique a equipe sobre um erro crítico"
+```
+
+---
+
 ### Scripts disponíveis
 
 | Pasta | Comando | Descrição |
@@ -180,6 +201,18 @@ python src/main.py
 | `frontend` | `npm test` | Executa os testes unitários (Vitest) |
 | `frontend` | `npm run lint` | Verifica o código com ESLint |
 | `agent` | `python src/main.py` | Executa o agente de IA no terminal |
+
+## 📚 Documentação (Entregas do Módulo 12)
+
+Durante o desenvolvimento do Agente de IA, diversos artefatos exigidos pela avaliação foram gerados para garantir a qualidade, segurança e observabilidade do sistema. Você pode conferir os relatórios detalhados nos links abaixo:
+
+- **[Histórico e Registro de Atividades (Kanban)](docs/etapasExecutadas.md):** Detalhamento de todas as etapas, branches e tomadas de decisão realizadas ao longo do projeto.
+- **[Engenharia de Prompt Aplicada](docs/refinamento-prompt.md):** Demonstração do ciclo iterativo de refinamento do *System Prompt* para blindar o modelo contra ataques (Prompt Injection/DAN).
+- **[QA e Testes Inteligentes (Code Review)](docs/qa/code-review.md):** Relatório da revisão de código automatizada pelo Agente, que resultou no isolamento de ferramentas e infraestrutura HTTP em módulos independentes (`utils.py` e `tools.py`).
+- **[Observabilidade Avançada e SRE](docs/qa/analise-anomalias.md):** Análise preditiva conduzida pela IA em cima dos logs de execução (CI/CD), identificando gargalos e prevendo timeouts.
+- **[Integração Low-Code (n8n)](#4-integração-n8n-opcional---notificações):** Fluxo JSON exportado em `docs/n8n-webhook-workflow.json` contendo o gatilho orientado a eventos do Agente.
+
+*(Para detalhes minuciosos sobre os *prompts* utilizados na interação com a IA durante o ciclo de desenvolvimento, acesse a pasta [`docs/prompts/`](docs/prompts/)).*
 
 ## 📌 Arquitetura do Sistema
 

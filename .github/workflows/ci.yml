@@ -108,3 +108,42 @@ jobs:
       # 6. Execução de testes unitários com Vitest
       - name: Run Unit Tests
         run: npm run test
+
+  # ============================================================================
+  # JOB: CI do Agente IA (Python)
+  # ============================================================================
+  agent-ci:
+    name: Agent CI (Python/LangGraph)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: agent
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8
+
+      - name: Run Linter (flake8)
+        run: |
+          # Quebra a build em erros graves
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Considera os warnings como apenas informativos
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Run Integration Tests (pytest)
+        env:
+          GOOGLE_API_KEY: "dummy-key-for-tests"
+        run: pytest tests/ -v
